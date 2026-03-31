@@ -322,6 +322,9 @@ def build_generic_json_export(repo: Path, task_slug: str | None = None) -> list[
     _require_repo_harness(repo)
     if task_slug:
         validate_task_slug(task_slug)
+        missing = verify_task(repo, task_slug)
+        if missing:
+            raise HarnessError(f"Task `{task_slug}` is not ready for export: missing {', '.join(missing)}")
         payload = {
             "kind": "task",
             "task_slug": task_slug,
@@ -623,6 +626,52 @@ def _extract_first_labeled_value(text: str, *labels: str) -> str | None:
     return None
 
 
+def _extract_labeled_items(text: str, *labels: str) -> list[str]:
+    normalized_labels = {label.strip().lower() for label in labels}
+    lines = text.splitlines()
+    for index, raw_line in enumerate(lines):
+        match = re.match(r"^(\s*)-\s+([^:]+):(.*)$", raw_line)
+        if not match:
+            continue
+        if match.group(2).strip().lower() not in normalized_labels:
+            continue
+
+        base_indent = len(match.group(1))
+        items: list[str] = []
+        inline_value = _normalize_extracted_item(match.group(3))
+        if inline_value:
+            items.append(inline_value)
+
+        for next_line in lines[index + 1 :]:
+            if re.match(r"^\s*##\s+", next_line):
+                break
+            next_match = re.match(r"^(\s*)-\s+([^:]+):(.*)$", next_line)
+            if next_match and len(next_match.group(1)) <= base_indent:
+                break
+
+            normalized = _normalize_extracted_item(next_line)
+            if normalized:
+                items.append(normalized)
+        return items
+    return []
+
+
+def _extract_labeled_text(text: str, *labels: str) -> str | None:
+    items = _extract_labeled_items(text, *labels)
+    if not items:
+        return None
+    return "; ".join(items)
+
+
+def _normalize_extracted_item(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    if cleaned.startswith("- "):
+        cleaned = cleaned[2:].strip()
+    return cleaned.replace("`", "").strip()
+
+
 def _parse_roles(text: str | None) -> list[dict[str, str]]:
     if not text:
         return []
@@ -635,15 +684,15 @@ def _parse_roles(text: str | None) -> list[dict[str, str]]:
         role = {
             "name": _extract_first_labeled_value(block, "이름", "name") or "",
             "type": _extract_first_labeled_value(block, "타입", "type") or "",
-            "responsibility": _extract_first_labeled_value(block, "책임", "responsibility") or "",
-            "success": _extract_first_labeled_value(block, "성공 조건", "success condition") or "",
-            "inputs": _extract_first_labeled_value(block, "입력", "inputs") or "",
-            "outputs": _extract_first_labeled_value(block, "출력", "outputs") or "",
-            "artifacts": _extract_first_labeled_value(block, "생성하거나 갱신할 artifact", "artifacts") or "",
-            "editable": _extract_first_labeled_value(block, "수정 가능한 범위", "editable scope") or "",
-            "forbidden": _extract_first_labeled_value(block, "수정 금지 범위", "forbidden scope") or "",
+            "responsibility": _extract_labeled_text(block, "책임", "responsibility") or "",
+            "success": _extract_labeled_text(block, "성공 조건", "success condition") or "",
+            "inputs": _extract_labeled_text(block, "입력", "inputs") or "",
+            "outputs": _extract_labeled_text(block, "출력", "outputs") or "",
+            "artifacts": _extract_labeled_text(block, "생성하거나 갱신할 artifact", "artifacts") or "",
+            "editable": _extract_labeled_text(block, "수정 가능한 범위", "editable scope") or "",
+            "forbidden": _extract_labeled_text(block, "수정 금지 범위", "forbidden scope") or "",
             "handoff": _extract_first_labeled_value(block, "handoff 대상", "handoff target") or "",
-            "escalation": _extract_first_labeled_value(block, "escalation trigger", "에스컬레이션 트리거") or "",
+            "escalation": _extract_labeled_text(block, "escalation trigger", "에스컬레이션 트리거") or "",
         }
         if any(role.values()):
             roles.append(role)
@@ -770,10 +819,21 @@ def _claude_role_tools(role: dict[str, str]) -> str:
 
 
 def _copilot_apply_to_patterns(contract_text: str) -> str:
-    raw = _extract_first_labeled_value(contract_text, "수정 가능한 파일", "editable files", "mutable surface")
-    if not raw:
+    raw_items = _extract_labeled_items(
+        contract_text,
+        "수정 가능한 파일",
+        "editable files",
+        "mutable surface",
+    )
+    if not raw_items:
         return "**"
-    cleaned = raw.replace("`", "")
-    parts = [part.strip() for part in cleaned.split(",")]
-    candidates = [part for part in parts if part and not part.startswith("_")]
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for raw_item in raw_items:
+        for part in raw_item.split(","):
+            candidate = part.strip()
+            if not candidate or candidate.startswith("_") or candidate in seen:
+                continue
+            seen.add(candidate)
+            candidates.append(candidate)
     return ",".join(candidates) if candidates else "**"

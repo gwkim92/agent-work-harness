@@ -10,6 +10,8 @@
 - 역할은 패턴 위에서 고른다
 - artifact handoff가 없는 역할은 만들지 않는다
 
+필드 값이 길거나 여러 개면 다음 줄 bullet list로 적어도 된다.
+
 ## Why Multi-Agent
 
 - 왜 single-agent로는 부족한가:

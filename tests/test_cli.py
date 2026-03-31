@@ -152,6 +152,10 @@ class AwhCliTests(unittest.TestCase):
             reviewer = repo / ".claude" / "agents" / "bootstrap-api-reviewer.md"
             self.assertTrue(coordinator.exists())
             self.assertTrue(reviewer.exists())
+            self.assertEqual(
+                sorted(path.name for path in (repo / ".claude" / "agents").glob("*.md")),
+                ["bootstrap-api-coordinator.md", "bootstrap-api-reviewer.md"],
+            )
             self.assertIn("name: bootstrap-api-coordinator", coordinator.read_text(encoding="utf-8"))
             self.assertIn("tools: Read, Grep, Glob, Bash", coordinator.read_text(encoding="utf-8"))
             self.assertIn("name: bootstrap-api-reviewer", reviewer.read_text(encoding="utf-8"))
@@ -175,3 +179,83 @@ class AwhCliTests(unittest.TestCase):
             generic_task = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(generic_task.returncode, 0, generic_task.stdout + generic_task.stderr)
             self.assertTrue((repo / "docs" / "exports" / "generic" / "bootstrap-api.json").exists())
+
+    def test_export_parses_multiline_contract_and_role_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "demo",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "general",
+                    "--roles",
+                ).returncode,
+                0,
+            )
+
+            (repo / "docs" / "tasks" / "demo" / "contract.md").write_text(
+                "\n".join(
+                    [
+                        "# Task Contract",
+                        "",
+                        "## Mutable Surface",
+                        "",
+                        "- 수정 가능한 파일:",
+                        "  - src/api/**",
+                        "  - tests/api/**",
+                        "- 수정 금지 파일:",
+                        "  - docs/**",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (repo / "docs" / "tasks" / "demo" / "roles.md").write_text(
+                "\n".join(
+                    [
+                        "# Multi-Agent Roles",
+                        "",
+                        "## Role 1",
+                        "",
+                        "- 이름: Planner",
+                        "- 타입: planner",
+                        "- 책임:",
+                        "  - define execution order",
+                        "  - keep scope aligned",
+                        "- 성공 조건:",
+                        "  - plan exists",
+                        "  - handoff is clear",
+                        "- handoff 대상: Generator",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            claude_task = self.run_cli("export", "claude", "--repo", str(repo), "--task", "demo")
+            self.assertEqual(claude_task.returncode, 0, claude_task.stdout + claude_task.stderr)
+            planner = repo / ".claude" / "agents" / "demo-planner.md"
+            self.assertTrue(planner.exists())
+            planner_text = planner.read_text(encoding="utf-8")
+            self.assertIn("Responsibility: define execution order; keep scope aligned", planner_text)
+            self.assertIn("Success condition: plan exists; handoff is clear", planner_text)
+
+            copilot_task = self.run_cli("export", "copilot", "--repo", str(repo), "--task", "demo")
+            self.assertEqual(copilot_task.returncode, 0, copilot_task.stdout + copilot_task.stderr)
+            copilot_text = (repo / ".github" / "instructions" / "demo.instructions.md").read_text(encoding="utf-8")
+            self.assertIn('applyTo: "src/api/**,tests/api/**"', copilot_text)
+
+    def test_generic_json_export_requires_existing_task(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+
+            result = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "missing-task")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Task `missing-task` is not ready for export", result.stdout)
+            self.assertFalse((repo / "docs" / "exports" / "generic" / "missing-task.json").exists())
