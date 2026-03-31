@@ -1,8 +1,6 @@
 # CLI UX
 
-This document proposes the future CLI shape for Agent Work Harness.
-
-The CLI is not implemented yet.
+This document describes the current CLI shape for Agent Work Harness and the next commands it should grow into.
 
 ## Naming
 
@@ -58,7 +56,7 @@ Examples:
 
 ```bash
 awh task new bootstrap-api --profile backend
-awh task new checkout-redesign --profile web --with-plan
+awh task new checkout-redesign --profile web --plan
 ```
 
 Expected behavior:
@@ -127,7 +125,7 @@ Expected behavior:
 
 ```bash
 awh init --profile default
-awh task new bootstrap-api --profile backend --with-plan
+awh task new bootstrap-api --profile backend --plan
 ```
 
 ### Existing Repository

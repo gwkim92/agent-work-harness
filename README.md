@@ -7,6 +7,7 @@ Agent Work Harness helps any repository adopt a lightweight operating model for 
 - repo-level instructions and verification rules
 - task-level artifacts such as `contract`, `handoff`, `review`, and `qa`
 - explicit escalation rules for planning, multi-agent coordination, and automation
+- a cross-platform CLI for installing and managing those artifacts
 
 The core idea is simple:
 
@@ -34,10 +35,12 @@ It is intentionally vendor-neutral. The harness should work with Codex, Claude, 
   - install-once repository files
 - `templates/task/`
   - per-task artifact templates
+- `src/awh/`
+  - Python CLI implementation
 - `scripts/scaffold.sh`
-  - install repo-level files into a target repository
+  - shell reference implementation for repo-level install
 - `scripts/new-task.sh`
-  - create or augment task directories
+  - shell reference implementation for task creation
 - `guides/`
   - distilled principles, adoption levels, escalation rules
 - `examples/`
@@ -77,7 +80,31 @@ This means task state accumulates per task instead of overwriting a single share
 
 ## Quick Start
 
-Today the repository ships shell scripts. They are the current reference implementation.
+Install the local CLI in editable mode:
+
+```bash
+cd /absolute/path/to/agent-work-harness
+python3 -m pip install -e .
+```
+
+Then install harness files into a target repository:
+
+```bash
+REPO=/absolute/path/to/repo
+
+awh init --profile default --repo "$REPO"
+awh task new bootstrap-api --profile backend --repo "$REPO" --plan
+```
+
+To add missing task artifacts later without overwriting existing files:
+
+```bash
+REPO=/absolute/path/to/repo
+
+awh task augment bootstrap-api --profile backend --repo "$REPO" --qa
+```
+
+The shell scripts remain as fallback reference implementations:
 
 ```bash
 KIT=/absolute/path/to/agent-work-harness
@@ -87,26 +114,18 @@ REPO=/absolute/path/to/repo
 "$KIT/scripts/new-task.sh" backend "$REPO" bootstrap-api --with-plan
 ```
 
-To add missing task artifacts later without overwriting existing files:
-
-```bash
-KIT=/absolute/path/to/agent-work-harness
-REPO=/absolute/path/to/repo
-
-"$KIT/scripts/new-task.sh" backend "$REPO" bootstrap-api --with-qa --only-missing
-```
-
-## Current Distribution vs Future Direction
+## Product Direction
 
 Current:
 
 - repo-local templates
-- shell-based install scripts
+- Python CLI
+- shell fallback scripts
 
-Recommended long-term product shape:
+Recommended distribution shape:
 
 - repo-local files remain the source of truth
-- a standalone CLI becomes the main user entrypoint
+- the standalone CLI is the main user entrypoint
 - GitHub templates cover greenfield project starts
 - GitHub Actions cover team-level enforcement
 
@@ -118,6 +137,8 @@ Design notes for that direction:
 
 ## Script Profiles
 
+The CLI mirrors these same profiles.
+
 ### Repo Install
 
 `scripts/scaffold.sh` supports:
@@ -128,11 +149,10 @@ Design notes for that direction:
 Example:
 
 ```bash
-KIT=/absolute/path/to/agent-work-harness
 REPO=/absolute/path/to/repo
 
-"$KIT/scripts/scaffold.sh" minimal "$REPO"
-"$KIT/scripts/scaffold.sh" default "$REPO"
+awh init --profile minimal --repo "$REPO"
+awh init --profile default --repo "$REPO"
 ```
 
 Behavior:
@@ -165,12 +185,18 @@ Optional flags:
 Example:
 
 ```bash
-KIT=/absolute/path/to/agent-work-harness
 REPO=/absolute/path/to/repo
 
-"$KIT/scripts/new-task.sh" web "$REPO" checkout-redesign --with-plan
-"$KIT/scripts/new-task.sh" general "$REPO" migration-audit --with-roles --with-topology
-"$KIT/scripts/new-task.sh" general "$REPO" migration-audit --with-plan --only-missing
+awh task new checkout-redesign --profile web --repo "$REPO" --plan
+awh task augment migration-audit --profile general --repo "$REPO" --roles --topology
+awh task augment migration-audit --profile general --repo "$REPO" --plan
+```
+
+## Validate The CLI
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+python3 -m compileall src tests
 ```
 
 ## Research Basis
