@@ -18,7 +18,7 @@ Level 1
 예:
 
 ```bash
-KIT=/absolute/path/to/codex_project_transplant_kit
+KIT=/absolute/path/to/agent-work-harness
 REPO=/absolute/path/to/repo
 
 "$KIT/scripts/scaffold.sh" default "$REPO"

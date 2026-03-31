@@ -17,7 +17,7 @@ Level 2
 예:
 
 ```bash
-KIT=/absolute/path/to/codex_project_transplant_kit
+KIT=/absolute/path/to/agent-work-harness
 REPO=/absolute/path/to/repo
 
 "$KIT/scripts/scaffold.sh" default "$REPO"
@@ -59,7 +59,7 @@ REPO=/absolute/path/to/repo
 기존 task에 `plan.md`만 추가하려면:
 
 ```bash
-KIT=/absolute/path/to/codex_project_transplant_kit
+KIT=/absolute/path/to/agent-work-harness
 REPO=/absolute/path/to/repo
 
 "$KIT/scripts/new-task.sh" web "$REPO" checkout-redesign --with-plan --only-missing
