@@ -131,9 +131,11 @@ Recommended distribution shape:
 
 Design notes for that direction:
 
+- [Product Blueprint](docs/product-blueprint.md)
 - [Distribution Model](docs/distribution-model.md)
 - [CLI UX](docs/cli-ux.md)
 - [GitHub Template Strategy](docs/github-template-strategy.md)
+- [Adapter Strategy](docs/adapter-strategy.md)
 - [Multi-Agent Patterns](guides/multi_agent_patterns.md)
 - [Claude Adapter Draft](docs/claude-adapter-draft.md)
 
