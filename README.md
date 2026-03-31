@@ -134,6 +134,8 @@ Design notes for that direction:
 - [Distribution Model](docs/distribution-model.md)
 - [CLI UX](docs/cli-ux.md)
 - [GitHub Template Strategy](docs/github-template-strategy.md)
+- [Multi-Agent Patterns](guides/multi_agent_patterns.md)
+- [Claude Adapter Draft](docs/claude-adapter-draft.md)
 
 ## Script Profiles
 

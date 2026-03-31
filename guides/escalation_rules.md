@@ -53,6 +53,20 @@
 - `docs/tasks/<task-slug>/roles.md`
 - `docs/tasks/<task-slug>/topology.md`
 
+먼저 정할 것:
+
+- 어떤 패턴을 쓸지
+  - `planner -> generator -> evaluator`
+  - `coordinator + specialists`
+  - `parallel specialists -> integrator`
+  - `researcher -> synthesizer -> reviewer`
+- 어떤 artifact를 서로 주고받을지
+- 어떤 역할이 최종 verification gate를 쥘지
+
+참고:
+
+- `guides/multi_agent_patterns.md`
+
 주의:
 
 - 역할 문서 생성은 agent가 스스로 해도 된다
