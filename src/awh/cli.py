@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from typing import Sequence
 
 from .core import (
+    apply_write_plan,
     HarnessError,
     apply_copy_plan,
     doctor_notes,
     ensure_target_repo,
+    export_plan,
     preflight_copy,
+    preflight_write,
     repo_plan,
     task_plan,
     verify_repo,
@@ -41,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_parser = subparsers.add_parser("doctor", help="Suggest the next harness step.")
     doctor_parser.add_argument("--repo", default=".")
+
+    export_parser = subparsers.add_parser("export", help="Generate adapter outputs from canonical harness files.")
+    export_parser.add_argument("target", choices=("claude", "codex", "copilot", "generic-json"))
+    export_parser.add_argument("--repo", default=".")
+    export_parser.add_argument("--task")
+    export_parser.add_argument("--force", action="store_true")
 
     return parser
 
@@ -90,6 +98,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_verify(args.repo, task_slug=args.task)
         if args.command == "doctor":
             return run_doctor(args.repo)
+        if args.command == "export":
+            return run_export(args.target, args.repo, task_slug=args.task, force=args.force)
     except HarnessError as exc:
         print(exc)
         return 1
@@ -196,3 +206,18 @@ def run_doctor(repo_arg: str) -> int:
         print(f"- {note}")
     return 0
 
+
+def run_export(target: str, repo_arg: str, *, task_slug: str | None, force: bool) -> int:
+    repo = ensure_target_repo(repo_arg)
+    operations = export_plan(target, repo, task_slug=task_slug)
+    effective, conflicts = preflight_write(operations, force=force)
+    if conflicts:
+        for conflict in conflicts:
+            print(f"Refusing to overwrite existing file: {conflict}")
+        print("No files were exported. Re-run with --force to overwrite.")
+        return 1
+
+    written = apply_write_plan(effective)
+    for path in written:
+        print(f"exported {path}")
+    return 0

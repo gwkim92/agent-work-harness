@@ -104,6 +104,18 @@ REPO=/absolute/path/to/repo
 awh task augment bootstrap-api --profile backend --repo "$REPO" --qa
 ```
 
+To generate adapter-friendly outputs from canonical harness files:
+
+```bash
+REPO=/absolute/path/to/repo
+
+awh export claude --repo "$REPO"
+awh export claude --repo "$REPO" --task bootstrap-api
+awh export codex --repo "$REPO" --task bootstrap-api
+awh export copilot --repo "$REPO"
+awh export generic-json --repo "$REPO" --task bootstrap-api
+```
+
 The shell scripts remain as fallback reference implementations:
 
 ```bash

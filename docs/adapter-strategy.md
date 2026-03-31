@@ -2,6 +2,18 @@
 
 This document explains how Agent Work Harness should support multiple agent tools and model environments without changing its canonical structure.
 
+## Current Status
+
+Initial support now exists for:
+
+- `awh export claude`
+- `awh export codex`
+- `awh export copilot`
+- `awh export generic-json`
+
+This is a first-pass implementation.
+It creates reproducible adapter outputs from canonical harness files, but it is not the final adapter system yet.
+
 ## Core Rule
 
 Canonical files stay vendor-neutral.

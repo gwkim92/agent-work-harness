@@ -120,3 +120,45 @@ class AwhCliTests(unittest.TestCase):
             doctor_after = self.run_cli("doctor", "--repo", str(repo))
             self.assertEqual(doctor_after.returncode, 0)
             self.assertIn("no evaluator artifacts", doctor_after.stdout)
+
+    def test_export_commands_generate_expected_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "bootstrap-api",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "backend",
+                    "--plan",
+                    "--roles",
+                    "--topology",
+                    "--qa",
+                ).returncode,
+                0,
+            )
+
+            claude_repo = self.run_cli("export", "claude", "--repo", str(repo))
+            self.assertEqual(claude_repo.returncode, 0, claude_repo.stdout + claude_repo.stderr)
+            self.assertTrue((repo / "CLAUDE.md").exists())
+
+            claude_task = self.run_cli("export", "claude", "--repo", str(repo), "--task", "bootstrap-api")
+            self.assertEqual(claude_task.returncode, 0, claude_task.stdout + claude_task.stderr)
+            self.assertTrue((repo / ".claude" / "agents" / "bootstrap-api-orchestrator.md").exists())
+            self.assertTrue((repo / ".claude" / "agents" / "bootstrap-api-reviewer.md").exists())
+
+            codex_task = self.run_cli("export", "codex", "--repo", str(repo), "--task", "bootstrap-api")
+            self.assertEqual(codex_task.returncode, 0, codex_task.stdout + codex_task.stderr)
+            self.assertTrue((repo / "docs" / "exports" / "codex" / "bootstrap-api.md").exists())
+
+            copilot_repo = self.run_cli("export", "copilot", "--repo", str(repo))
+            self.assertEqual(copilot_repo.returncode, 0, copilot_repo.stdout + copilot_repo.stderr)
+            self.assertTrue((repo / ".github" / "copilot-instructions.md").exists())
+
+            generic_task = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "bootstrap-api")
+            self.assertEqual(generic_task.returncode, 0, generic_task.stdout + generic_task.stderr)
+            self.assertTrue((repo / "docs" / "exports" / "generic" / "bootstrap-api.json").exists())

@@ -105,6 +105,7 @@ That leads to this default CLI shape:
 - `awh init`
 - `awh task new`
 - `awh task augment`
+- `awh export`
 - `awh verify`
 - `awh doctor`
 
