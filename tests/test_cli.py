@@ -148,16 +148,29 @@ class AwhCliTests(unittest.TestCase):
 
             claude_task = self.run_cli("export", "claude", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(claude_task.returncode, 0, claude_task.stdout + claude_task.stderr)
-            self.assertTrue((repo / ".claude" / "agents" / "bootstrap-api-orchestrator.md").exists())
-            self.assertTrue((repo / ".claude" / "agents" / "bootstrap-api-reviewer.md").exists())
+            coordinator = repo / ".claude" / "agents" / "bootstrap-api-coordinator.md"
+            reviewer = repo / ".claude" / "agents" / "bootstrap-api-reviewer.md"
+            self.assertTrue(coordinator.exists())
+            self.assertTrue(reviewer.exists())
+            self.assertIn("name: bootstrap-api-coordinator", coordinator.read_text(encoding="utf-8"))
+            self.assertIn("tools: Read, Grep, Glob, Bash", coordinator.read_text(encoding="utf-8"))
+            self.assertIn("name: bootstrap-api-reviewer", reviewer.read_text(encoding="utf-8"))
 
             codex_task = self.run_cli("export", "codex", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(codex_task.returncode, 0, codex_task.stdout + codex_task.stderr)
-            self.assertTrue((repo / "docs" / "exports" / "codex" / "bootstrap-api.md").exists())
+            codex_packet = repo / "docs" / "exports" / "codex" / "bootstrap-api.md"
+            self.assertTrue(codex_packet.exists())
+            self.assertIn("## Task Summary", codex_packet.read_text(encoding="utf-8"))
 
             copilot_repo = self.run_cli("export", "copilot", "--repo", str(repo))
             self.assertEqual(copilot_repo.returncode, 0, copilot_repo.stdout + copilot_repo.stderr)
             self.assertTrue((repo / ".github" / "copilot-instructions.md").exists())
+
+            copilot_task = self.run_cli("export", "copilot", "--repo", str(repo), "--task", "bootstrap-api")
+            self.assertEqual(copilot_task.returncode, 0, copilot_task.stdout + copilot_task.stderr)
+            copilot_task_file = repo / ".github" / "instructions" / "bootstrap-api.instructions.md"
+            self.assertTrue(copilot_task_file.exists())
+            self.assertIn('applyTo: "**"', copilot_task_file.read_text(encoding="utf-8"))
 
             generic_task = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(generic_task.returncode, 0, generic_task.stdout + generic_task.stderr)

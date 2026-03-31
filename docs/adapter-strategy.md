@@ -95,6 +95,15 @@ Typical mappings:
 - `AGENTS.md` -> `CLAUDE.md`
 - `roles.md` + `topology.md` -> `.claude/agents/*.md`
 
+Current export style:
+
+- generated Claude subagents use YAML frontmatter
+  - `name`
+  - `description`
+  - `tools`
+- coordinator and reviewer cards are generated even when role parsing is minimal
+- role-specific cards can be generated from `roles.md` when structured values exist
+
 ### Codex
 
 Goal:
@@ -124,12 +133,13 @@ Goal:
 Expected outputs:
 
 - `.github/copilot-instructions.md`
-- optional path-specific instruction files if needed later
+- `.github/instructions/<task>.instructions.md` for task-scoped guidance
 
 Typical mappings:
 
 - `AGENTS.md` -> `.github/copilot-instructions.md`
 - `verification-plan.md` contributes guardrails and check commands
+- `contract.md` mutable surface can inform `applyTo` patterns
 
 ### Cursor
 
