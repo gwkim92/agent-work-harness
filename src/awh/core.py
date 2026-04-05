@@ -465,6 +465,7 @@ def build_generic_json_export(repo: Path, task_slug: str | None = None) -> list[
             "task_slug": task_slug,
             "files": _task_file_payload(repo, task_slug),
             "structured": _task_structured_payload(repo, task_slug),
+            "briefing": _task_briefing_payload(repo, task_slug),
         }
         destination = repo / "docs" / "exports" / "generic" / f"{task_slug}.json"
     else:
@@ -625,17 +626,7 @@ def _codex_repo_content(repo: Path) -> str:
 
 
 def _codex_task_content(repo: Path, task_slug: str) -> str:
-    task_dir = repo / "docs" / "tasks" / task_slug
-    contract = _read_file(task_dir / "contract.md")
-    handoff = _read_file(task_dir / "handoff.md")
-    plan = _read_optional_file(task_dir / "plan.md")
-    review = _read_optional_file(task_dir / "review.md")
-    qa = _read_optional_file(task_dir / "qa.md")
-    mutable_surface = _extract_first_labeled_value(contract, "수정 가능한 파일", "수정 가능한 범위")
-    task_name = _extract_first_labeled_value(contract, "이름")
-    goal = _extract_first_labeled_value(contract, "이 작업이 끝났을 때 반드시 참이어야 하는 상태")
-    next_step = _extract_first_labeled_value(handoff, "다음 세션은 이것부터 시작")
-    completed = _extract_first_labeled_value(handoff, "완료")
+    briefing = _task_briefing_payload(repo, task_slug)
     long_running_lines = _codex_long_running_lines(repo, task_slug)
     return "\n".join(
         [
@@ -645,42 +636,39 @@ def _codex_task_content(repo: Path, task_slug: str) -> str:
             "",
             "## Read First",
             "",
-            f"- `docs/tasks/{task_slug}/contract.md`",
-            f"- `docs/tasks/{task_slug}/handoff.md`",
-            f"- `docs/tasks/{task_slug}/plan.md` when present",
-            f"- `docs/tasks/{task_slug}/review.md` and `qa.md` when present",
+            *[f"- `{path}`" for path in briefing["read_first"]],
             "",
             "## Task Summary",
             "",
-            f"- name: {task_name or task_slug}",
-            f"- goal: {goal or '_Not captured in a single field._'}",
-            f"- mutable surface: {mutable_surface or '_Use the contract mutable surface section._'}",
-            f"- completed status: {completed or '_See handoff.md._'}",
-            f"- next step: {next_step or '_See handoff.md._'}",
+            f"- name: {briefing['name']}",
+            f"- goal: {briefing['goal'] or '_Not captured in a single field._'}",
+            f"- mutable surface: {_join_briefing_items(briefing['mutable_surface'], '_Use the contract mutable surface section._')}",
+            f"- scope includes: {_join_briefing_items(briefing['scope_includes'], '_Use the contract scope section._')}",
+            f"- scope excludes: {_join_briefing_items(briefing['scope_excludes'], '_See contract.md._')}",
+            "",
+            "## Current State",
+            "",
+            f"- completed: {_join_briefing_items(briefing['completed'], '_See handoff.md._')}",
+            f"- in progress: {_join_briefing_items(briefing['in_progress'], '_See handoff.md._')}",
+            f"- blockers: {_join_briefing_items(briefing['blockers'], '_None captured._')}",
+            f"- current focus: {briefing['current_focus'] or '_See progress.md._'}",
+            f"- next step: {briefing['next_step'] or briefing['progress_next_step'] or '_See handoff.md._'}",
+            f"- open risks: {_join_briefing_items(briefing['open_risks'], '_No open risks captured._')}",
+            "",
+            "## Verification And Evidence",
+            "",
+            f"- verification commands: {_join_briefing_items(briefing['verification_commands'], '_Add verification commands in contract.md._')}",
+            f"- useful commands: {_join_briefing_items(briefing['useful_commands'], '_See verification plan._')}",
+            f"- evidence status: {_counts_text(briefing['evidence_counts'], empty='_No evidence manifest._')}",
+            f"- recent evidence: {_join_briefing_items(briefing['recent_evidence'], '_No collected evidence yet._')}",
             "",
             "## Long-Running State",
             "",
             *long_running_lines,
             "",
-            "## Contract",
+            "## Canonical References",
             "",
-            contract,
-            "",
-            "## Handoff",
-            "",
-            handoff,
-            "",
-            "## Plan",
-            "",
-            plan or "_Not present._",
-            "",
-            "## Review",
-            "",
-            review or "_Not present._",
-            "",
-            "## QA",
-            "",
-            qa or "_Not present._",
+            *[f"- `{path}`" for path in briefing["references"]],
             "",
         ]
     )
@@ -717,6 +705,7 @@ def _copilot_repo_content(repo: Path) -> str:
 def _copilot_task_content(repo: Path, task_slug: str) -> str:
     contract = _read_file(repo / "docs" / "tasks" / task_slug / "contract.md")
     apply_to = _copilot_apply_to_patterns(contract)
+    briefing = _task_briefing_payload(repo, task_slug)
     long_running_guidance = _copilot_long_running_lines(repo, task_slug)
     return "\n".join(
         [
@@ -731,6 +720,11 @@ def _copilot_task_content(repo: Path, task_slug: str) -> str:
             "",
             f"- Stay inside `docs/tasks/{task_slug}/contract.md` scope and mutable surface.",
             f"- Use `docs/tasks/{task_slug}/plan.md` if it exists before making large edits.",
+            f"- Current focus: {briefing['current_focus'] or '_See progress.md._'}",
+            f"- Blockers: {_join_briefing_items(briefing['blockers'], '_None captured._')}",
+            f"- Next step: {briefing['next_step'] or briefing['progress_next_step'] or '_See handoff.md._'}",
+            f"- Verification commands: {_join_briefing_items(briefing['verification_commands'], '_See contract.md._')}",
+            f"- Evidence status: {_counts_text(briefing['evidence_counts'], empty='_No evidence manifest._')}",
             *long_running_guidance,
             f"- Update `docs/tasks/{task_slug}/review.md` and `qa.md` instead of inventing new evaluation standards.",
             f"- Refresh `docs/tasks/{task_slug}/handoff.md` before stopping work.",
@@ -766,6 +760,123 @@ def _task_structured_payload(repo: Path, task_slug: str) -> dict[str, Any]:
     if evidence_manifest_path.exists():
         structured["evidence_manifest"] = _load_evidence_manifest(evidence_manifest_path)
     return structured
+
+
+def _task_briefing_payload(repo: Path, task_slug: str) -> dict[str, Any]:
+    task_dir = repo / "docs" / "tasks" / task_slug
+    contract = _read_file(task_dir / "contract.md")
+    handoff = _read_file(task_dir / "handoff.md")
+    progress_text = _read_optional_file(task_dir / "progress.md")
+
+    feature_list_path = task_dir / "feature_list.json"
+    evidence_manifest_path = task_dir / "evidence" / "manifest.json"
+    feature_list = _load_feature_list(feature_list_path) if feature_list_path.exists() else None
+    evidence_manifest = _load_evidence_manifest(evidence_manifest_path) if evidence_manifest_path.exists() else None
+
+    current_focus_items = _section_summary_items(progress_text, "Current Focus")
+    recent_sessions = _section_summary_items(progress_text, "Recent Sessions")
+    open_risks = _section_summary_items(progress_text, "Open Risks")
+    useful_commands = _section_summary_items(progress_text, "Useful Commands")
+
+    return {
+        "task_slug": task_slug,
+        "name": _extract_first_labeled_value(contract, "이름") or task_slug,
+        "goal": _extract_first_labeled_value(contract, "이 작업이 끝났을 때 반드시 참이어야 하는 상태"),
+        "mutable_surface": _extract_all_labeled_entries(contract, "수정 가능한 파일", "수정 가능한 범위", "mutable surface"),
+        "scope_includes": _extract_all_labeled_entries(contract, "포함", "includes"),
+        "scope_excludes": _extract_all_labeled_entries(contract, "제외", "excludes"),
+        "verification_commands": _extract_all_labeled_entries(contract, "검증에 사용할 명령", "verification command"),
+        "completed": _extract_all_labeled_entries(handoff, "완료", "completed"),
+        "in_progress": _extract_all_labeled_entries(handoff, "진행 중", "in progress"),
+        "blockers": _extract_all_labeled_entries(handoff, "막힌 점", "blocked", "blockers"),
+        "next_step": _extract_first_labeled_value(handoff, "다음 세션은 이것부터 시작", "exact next step"),
+        "current_focus": current_focus_items[0] if current_focus_items else None,
+        "recent_sessions": recent_sessions,
+        "open_risks": open_risks,
+        "useful_commands": useful_commands,
+        "progress_next_step": _progress_exact_next_step(progress_text) if progress_text else None,
+        "feature_counts": _feature_counts(feature_list),
+        "evidence_counts": _evidence_counts(evidence_manifest),
+        "recent_evidence": _recent_evidence_summaries(evidence_manifest),
+        "read_first": _task_read_first_paths(repo, task_slug),
+        "references": _task_reference_paths(repo, task_slug),
+    }
+
+
+def _task_read_first_paths(repo: Path, task_slug: str) -> list[str]:
+    candidates = [
+        task_artifact_path(repo, task_slug, "contract"),
+        task_artifact_path(repo, task_slug, "handoff"),
+        task_artifact_path(repo, task_slug, "progress"),
+        task_artifact_path(repo, task_slug, "feature_list"),
+        task_artifact_path(repo, task_slug, "evidence_manifest"),
+        task_artifact_path(repo, task_slug, "plan"),
+        task_artifact_path(repo, task_slug, "review"),
+        task_artifact_path(repo, task_slug, "qa"),
+    ]
+    return [str(path.relative_to(repo)) for path in candidates if path.exists()]
+
+
+def _task_reference_paths(repo: Path, task_slug: str) -> list[str]:
+    candidates = [
+        task_artifact_path(repo, task_slug, "contract"),
+        task_artifact_path(repo, task_slug, "handoff"),
+        task_artifact_path(repo, task_slug, "plan"),
+        task_artifact_path(repo, task_slug, "review"),
+        task_artifact_path(repo, task_slug, "qa"),
+        task_artifact_path(repo, task_slug, "roles"),
+        task_artifact_path(repo, task_slug, "topology"),
+        task_artifact_path(repo, task_slug, "feature_list"),
+        task_artifact_path(repo, task_slug, "progress"),
+        task_artifact_path(repo, task_slug, "init_script"),
+        task_artifact_path(repo, task_slug, "evidence_manifest"),
+    ]
+    references: list[str] = []
+    for path in candidates:
+        if not path.exists():
+            continue
+        relative = str(path.relative_to(repo))
+        if relative not in references:
+            references.append(relative)
+    return references
+
+
+def _feature_counts(feature_list: dict[str, Any] | None) -> dict[str, int] | None:
+    if feature_list is None:
+        return None
+    counts = {status: 0 for status in sorted(FEATURE_STATUS_VALUES)}
+    for feature in feature_list.get("features", []):
+        if isinstance(feature, dict) and feature.get("status") in counts:
+            counts[feature["status"]] += 1
+    return counts
+
+
+def _evidence_counts(evidence_manifest: dict[str, Any] | None) -> dict[str, int] | None:
+    if evidence_manifest is None:
+        return None
+    counts = {status: 0 for status in sorted(EVIDENCE_STATUS_VALUES)}
+    for artifact in evidence_manifest.get("artifacts", []):
+        if isinstance(artifact, dict) and artifact.get("status") in counts:
+            counts[artifact["status"]] += 1
+    return counts
+
+
+def _recent_evidence_summaries(evidence_manifest: dict[str, Any] | None) -> list[str]:
+    if evidence_manifest is None:
+        return []
+    summaries: list[str] = []
+    for artifact in evidence_manifest.get("artifacts", []):
+        if not isinstance(artifact, dict):
+            continue
+        if artifact.get("status") != "collected":
+            continue
+        summary = str(artifact.get("summary") or "").strip()
+        artifact_id = str(artifact.get("id") or "").strip()
+        location = str(artifact.get("location") or "").strip()
+        parts = [part for part in (artifact_id, summary, location) if part]
+        if parts:
+            summaries.append(" | ".join(parts))
+    return summaries[:3]
 
 
 def _read_file(path: Path) -> str:
@@ -858,6 +969,21 @@ def _is_template_placeholder(value: str) -> bool:
     return bool(TEMPLATE_PLACEHOLDER_RE.fullmatch(value.strip()))
 
 
+def _join_briefing_items(values: str | list[str] | None, empty: str) -> str:
+    if values is None:
+        return empty
+    if isinstance(values, str):
+        return values or empty
+    filtered = [value for value in values if value]
+    return "; ".join(filtered) if filtered else empty
+
+
+def _counts_text(counts: dict[str, int] | None, *, empty: str) -> str:
+    if not counts:
+        return empty
+    return ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
+
+
 def _parse_roles(text: str | None) -> list[dict[str, str]]:
     if not text:
         return []
@@ -908,61 +1034,73 @@ def _claude_agent_file(*, name: str, description: str, tools: str, body: str) ->
 
 
 def _claude_coordinator_body(repo: Path, task_slug: str) -> str:
-    task_dir = repo / "docs" / "tasks" / task_slug
-    topology = _read_optional_file(task_dir / "topology.md")
-    plan = _read_optional_file(task_dir / "plan.md")
-    long_running_lines = _claude_long_running_lines(repo, task_slug)
+    briefing = _task_briefing_payload(repo, task_slug)
     return "\n".join(
         [
             f"You coordinate the task `{task_slug}`.",
             "",
             "Canonical files to read first:",
-            f"- `docs/tasks/{task_slug}/contract.md`",
-            f"- `docs/tasks/{task_slug}/handoff.md`",
-            f"- `docs/tasks/{task_slug}/plan.md` when present",
-            f"- `docs/tasks/{task_slug}/roles.md` when present",
-            f"- `docs/tasks/{task_slug}/topology.md` when present",
-            *long_running_lines,
+            *[f"- `{path}`" for path in briefing["read_first"]],
+            "",
+            "Current briefing:",
+            f"- goal: {briefing['goal'] or '_Not captured in a single field._'}",
+            f"- mutable surface: {_join_briefing_items(briefing['mutable_surface'], '_Use contract.md._')}",
+            f"- completed: {_join_briefing_items(briefing['completed'], '_See handoff.md._')}",
+            f"- in progress: {_join_briefing_items(briefing['in_progress'], '_See handoff.md._')}",
+            f"- blockers: {_join_briefing_items(briefing['blockers'], '_None captured._')}",
+            f"- current focus: {briefing['current_focus'] or '_See progress.md._'}",
+            f"- next step: {briefing['next_step'] or briefing['progress_next_step'] or '_See handoff.md._'}",
+            "",
+            "Verification path:",
+            f"- verification commands: {_join_briefing_items(briefing['verification_commands'], '_See contract.md._')}",
+            f"- evidence status: {_counts_text(briefing['evidence_counts'], empty='_No evidence manifest._')}",
+            f"- recent evidence: {_join_briefing_items(briefing['recent_evidence'], '_No collected evidence yet._')}",
+            "",
+            "Canonical references to consult as needed:",
+            *[f"- `{path}`" for path in briefing["references"]],
             "",
             "Your job:",
             "- keep work aligned to the contract",
             "- route attention to the right task artifacts",
             "- avoid changing evaluation standards ad hoc",
             "- leave the task in a handoff-ready state",
-            "",
-            "Plan:",
-            "",
-            plan or "_Not present._",
-            "",
-            "Topology:",
-            "",
-            topology or "_Not present._",
         ]
     )
 
 
 def _claude_reviewer_body(repo: Path, task_slug: str, review: str | None, qa: str | None) -> str:
+    briefing = _task_briefing_payload(repo, task_slug)
+    reviewer_paths = [
+        f"docs/tasks/{task_slug}/review.md",
+        f"docs/tasks/{task_slug}/qa.md",
+        "docs/verification-plan.md",
+        f"docs/tasks/{task_slug}/contract.md",
+        f"docs/tasks/{task_slug}/handoff.md",
+    ]
+    evidence_manifest = task_artifact_path(repo, task_slug, "evidence_manifest")
+    if evidence_manifest.exists():
+        reviewer_paths.append(str(evidence_manifest.relative_to(repo)))
     return "\n".join(
         [
             f"You are the reviewer for task `{task_slug}`.",
+            "",
+            "Read these canonical files first:",
+            *[f"- `{path}`" for path in reviewer_paths],
+            "",
+            "Current verification context:",
+            f"- goal: {briefing['goal'] or '_Not captured in a single field._'}",
+            f"- claimed completed work: {_join_briefing_items(briefing['completed'], '_See handoff.md._')}",
+            f"- in progress: {_join_briefing_items(briefing['in_progress'], '_See handoff.md._')}",
+            f"- blockers: {_join_briefing_items(briefing['blockers'], '_None captured._')}",
+            f"- next step: {briefing['next_step'] or briefing['progress_next_step'] or '_See handoff.md._'}",
+            f"- verification commands: {_join_briefing_items(briefing['verification_commands'], '_See contract.md._')}",
+            f"- evidence status: {_counts_text(briefing['evidence_counts'], empty='_No evidence manifest._')}",
+            f"- recent evidence: {_join_briefing_items(briefing['recent_evidence'], '_No collected evidence yet._')}",
             "",
             "Priorities:",
             "- validate claims against canonical task artifacts",
             "- look for regressions, missing verification, and scope drift",
             "- prefer evidence over optimistic status",
-            "",
-            "Canonical files:",
-            f"- `docs/tasks/{task_slug}/review.md`",
-            f"- `docs/tasks/{task_slug}/qa.md`",
-            f"- `docs/verification-plan.md`",
-            "",
-            "Review Notes:",
-            "",
-            review or "_Not present._",
-            "",
-            "QA Notes:",
-            "",
-            qa or "_Not present._",
         ]
     )
 
@@ -1195,6 +1333,17 @@ def _progress_exact_next_step(text: str) -> str | None:
         if normalized:
             return normalized
     return None
+
+
+def _section_summary_items(text: str | None, heading: str) -> list[str]:
+    if not text:
+        return []
+    items: list[str] = []
+    for line in _section_body_lines(text, heading):
+        normalized = _normalize_extracted_item(line)
+        if normalized and not _is_template_placeholder(normalized):
+            items.append(normalized)
+    return items
 
 
 def _section_body_lines(text: str, heading: str) -> list[str]:

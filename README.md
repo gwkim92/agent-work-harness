@@ -128,6 +128,14 @@ awh export copilot --repo "$REPO" --task bootstrap-api
 awh export generic-json --repo "$REPO" --task bootstrap-api
 ```
 
+Task-level exports are briefing-first.
+They surface compact task state and point back to canonical task files instead of mirroring full markdown documents into each adapter output.
+`generic-json` task exports now include:
+
+- `files` for raw canonical contents
+- `structured` for parsed long-running JSON artifacts
+- `briefing` for compact execution state
+
 The shell scripts remain as fallback reference implementations:
 
 ```bash

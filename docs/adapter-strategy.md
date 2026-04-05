@@ -12,7 +12,8 @@ Initial support now exists for:
 - `awh export generic-json`
 
 This is a first-pass implementation.
-It creates reproducible adapter outputs from canonical harness files, but it is not the final adapter system yet.
+It creates reproducible adapter outputs from canonical harness files.
+Task-level exports are now briefing-first rather than full document dumps.
 
 ## Core Rule
 
@@ -27,6 +28,12 @@ Examples:
 
 Adapters should export from these files.
 They should not replace them.
+
+For task-level exports, the generated output should:
+
+- inline only high-signal briefing data
+- point back to canonical markdown and JSON files for full detail
+- stay safe to regenerate without becoming a second source of truth
 
 ## Why Adapters Matter
 
@@ -94,6 +101,7 @@ Typical mappings:
 
 - `AGENTS.md` -> `CLAUDE.md`
 - `roles.md` + `topology.md` -> `.claude/agents/*.md`
+- task briefings -> coordinator and reviewer cards with canonical file references
 
 Current export style:
 
@@ -119,6 +127,7 @@ Typical mappings:
 
 - `AGENTS.md` stays canonical
 - task files are summarized into a compact execution packet
+- full task markdown stays in `docs/tasks/<task-slug>/` and is referenced, not mirrored
 
 Why not force more files:
 
@@ -140,6 +149,7 @@ Typical mappings:
 - `AGENTS.md` -> `.github/copilot-instructions.md`
 - `verification-plan.md` contributes guardrails and check commands
 - `contract.md` mutable surface can inform `applyTo` patterns
+- compact task briefings add current focus, blockers, next step, and evidence status
 
 ### Cursor
 
@@ -169,6 +179,12 @@ This is useful for:
 - custom dashboards
 - future tool integrations
 
+Task payloads should include:
+
+- `files` for raw canonical contents
+- `structured` for parsed JSON state
+- `briefing` for compact task execution state
+
 ## Recommended Commands
 
 ### Repo-Level Export
@@ -193,6 +209,7 @@ awh export generic-json --repo /path/to/repo --task bootstrap-api
 - exports should be reproducible
 - generated files should be safe to regenerate
 - adapter-specific files should not hold the only copy of important meaning
+- task exports should summarize, not clone, canonical task documents
 
 ## What Users Likely Prefer
 

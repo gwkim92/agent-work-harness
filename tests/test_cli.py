@@ -535,15 +535,25 @@ class AwhCliTests(unittest.TestCase):
                 sorted(path.name for path in (repo / ".claude" / "agents").glob("*.md")),
                 ["bootstrap-api-coordinator.md", "bootstrap-api-reviewer.md"],
             )
-            self.assertIn("name: bootstrap-api-coordinator", coordinator.read_text(encoding="utf-8"))
-            self.assertIn("tools: Read, Grep, Glob, Bash", coordinator.read_text(encoding="utf-8"))
-            self.assertIn("name: bootstrap-api-reviewer", reviewer.read_text(encoding="utf-8"))
+            coordinator_text = coordinator.read_text(encoding="utf-8")
+            reviewer_text = reviewer.read_text(encoding="utf-8")
+            self.assertIn("name: bootstrap-api-coordinator", coordinator_text)
+            self.assertIn("tools: Read, Grep, Glob, Bash", coordinator_text)
+            self.assertIn("Current briefing", coordinator_text)
+            self.assertIn("Verification path", coordinator_text)
+            self.assertIn("name: bootstrap-api-reviewer", reviewer_text)
+            self.assertIn("Current verification context", reviewer_text)
 
             codex_task = self.run_cli("export", "codex", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(codex_task.returncode, 0, codex_task.stdout + codex_task.stderr)
             codex_packet = repo / "docs" / "exports" / "codex" / "bootstrap-api.md"
             self.assertTrue(codex_packet.exists())
-            self.assertIn("## Task Summary", codex_packet.read_text(encoding="utf-8"))
+            codex_text = codex_packet.read_text(encoding="utf-8")
+            self.assertIn("## Task Summary", codex_text)
+            self.assertIn("## Current State", codex_text)
+            self.assertIn("## Verification And Evidence", codex_text)
+            self.assertIn("## Canonical References", codex_text)
+            self.assertNotIn("# Task Contract", codex_text)
 
             copilot_repo = self.run_cli("export", "copilot", "--repo", str(repo))
             self.assertEqual(copilot_repo.returncode, 0, copilot_repo.stdout + copilot_repo.stderr)
@@ -553,11 +563,18 @@ class AwhCliTests(unittest.TestCase):
             self.assertEqual(copilot_task.returncode, 0, copilot_task.stdout + copilot_task.stderr)
             copilot_task_file = repo / ".github" / "instructions" / "bootstrap-api.instructions.md"
             self.assertTrue(copilot_task_file.exists())
-            self.assertIn('applyTo: "src/awh/**,tests/**"', copilot_task_file.read_text(encoding="utf-8"))
+            copilot_text = copilot_task_file.read_text(encoding="utf-8")
+            self.assertIn('applyTo: "src/awh/**,tests/**"', copilot_text)
+            self.assertIn("Current focus", copilot_text)
+            self.assertIn("Next step", copilot_text)
 
             generic_task = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(generic_task.returncode, 0, generic_task.stdout + generic_task.stderr)
-            self.assertTrue((repo / "docs" / "exports" / "generic" / "bootstrap-api.json").exists())
+            generic_payload = json.loads(
+                (repo / "docs" / "exports" / "generic" / "bootstrap-api.json").read_text(encoding="utf-8")
+            )
+            self.assertIn("briefing", generic_payload)
+            self.assertEqual(generic_payload["briefing"]["next_step"], "rerun verification and continue implementation")
 
     def test_long_running_exports_include_structured_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -584,20 +601,35 @@ class AwhCliTests(unittest.TestCase):
             codex_task = self.run_cli("export", "codex", "--repo", str(repo), "--task", "long-export")
             self.assertEqual(codex_task.returncode, 0, codex_task.stdout + codex_task.stderr)
             codex_text = (repo / "docs" / "exports" / "codex" / "long-export.md").read_text(encoding="utf-8")
+            self.assertIn("## Current State", codex_text)
+            self.assertIn("## Verification And Evidence", codex_text)
             self.assertIn("## Long-Running State", codex_text)
+            self.assertIn("## Canonical References", codex_text)
             self.assertIn("docs/tasks/long-export/feature_list.json", codex_text)
             self.assertIn("feature counts:", codex_text)
+            self.assertIn("current focus:", codex_text)
             self.assertIn("progress next step: step: wire parsed feature counts into the Codex task packet", codex_text)
+            self.assertNotIn("# Task Contract", codex_text)
+            self.assertNotIn("# Session Handoff", codex_text)
 
             claude_task = self.run_cli("export", "claude", "--repo", str(repo), "--task", "long-export")
             self.assertEqual(claude_task.returncode, 0, claude_task.stdout + claude_task.stderr)
             claude_text = (repo / ".claude" / "agents" / "long-export-coordinator.md").read_text(encoding="utf-8")
+            self.assertIn("Current briefing", claude_text)
+            self.assertIn("Verification path", claude_text)
             self.assertIn("docs/tasks/long-export/feature_list.json", claude_text)
             self.assertIn("docs/tasks/long-export/progress.md", claude_text)
+            self.assertNotIn("Plan:\n\n# Task Plan", claude_text)
+
+            reviewer_text = (repo / ".claude" / "agents" / "long-export-reviewer.md").read_text(encoding="utf-8")
+            self.assertIn("Current verification context", reviewer_text)
+            self.assertIn("docs/tasks/long-export/evidence/manifest.json", reviewer_text)
 
             copilot_task = self.run_cli("export", "copilot", "--repo", str(repo), "--task", "long-export")
             self.assertEqual(copilot_task.returncode, 0, copilot_task.stdout + copilot_task.stderr)
             copilot_text = (repo / ".github" / "instructions" / "long-export.instructions.md").read_text(encoding="utf-8")
+            self.assertIn("Current focus", copilot_text)
+            self.assertIn("Next step", copilot_text)
             self.assertIn("docs/tasks/long-export/progress.md", copilot_text)
             self.assertIn("docs/tasks/long-export/evidence/manifest.json", copilot_text)
 
@@ -607,8 +639,14 @@ class AwhCliTests(unittest.TestCase):
                 (repo / "docs" / "exports" / "generic" / "long-export.json").read_text(encoding="utf-8")
             )
             self.assertIn("structured", generic_payload)
+            self.assertIn("briefing", generic_payload)
             self.assertEqual(generic_payload["structured"]["feature_list"]["task_slug"], "long-export")
             self.assertEqual(generic_payload["structured"]["evidence_manifest"]["artifacts"][0]["id"], "evidence-001")
+            self.assertEqual(generic_payload["briefing"]["current_focus"], "focus: finish export summaries")
+            self.assertEqual(
+                generic_payload["briefing"]["progress_next_step"],
+                "step: wire parsed feature counts into the Codex task packet",
+            )
 
     def test_export_parses_multiline_contract_and_role_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
