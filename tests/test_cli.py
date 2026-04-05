@@ -93,6 +93,51 @@ class AwhCliTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def fill_strict_repo_harness(self, repo: Path) -> None:
+        (repo / "docs" / "verification-plan.md").write_text(
+            "\n".join(
+                [
+                    "# Verification Plan",
+                    "",
+                    "## Scope",
+                    "",
+                    "- 대상 기능군 또는 시스템: CLI install, verify, export flows",
+                    "",
+                    "## Automated Checks",
+                    "",
+                    "- 명령: `PYTHONPATH=src python3 -m unittest discover -s tests -v`",
+                    "- 무엇을 증명하는가: CLI behavior stays correct",
+                    "- 통과 조건: all tests pass",
+                    "",
+                    "## Manual Checks",
+                    "",
+                    "- 시나리오: run `awh init --dry-run` in a temp repo",
+                    "- 기대 동작: planned writes are shown and no files are created",
+                    "",
+                    "## Browser Or Runtime Checks",
+                    "",
+                    "- URL, route, job, endpoint: `awh verify`",
+                    "- 수행 경로: run after filling required repo files",
+                    "- 확인할 증거: command exits with code 0",
+                    "",
+                    "## Regression Guard",
+                    "",
+                    "- 유지되어야 하는 기존 동작: `awh init` stays atomic on collisions",
+                    "- 그것을 지키는 체크: `test_init_is_atomic_when_collision_exists`",
+                    "",
+                    "## Rollback",
+                    "",
+                    "- 실패 시 끄거나 되돌리는 방법: revert the CLI/core patch and rerun unit tests",
+                    "",
+                    "## Human Confirmation",
+                    "",
+                    "- 여전히 사람이 판단해야 하는 항목: exported task packets stay readable",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def fill_task_harness(self, repo: Path, slug: str) -> None:
         task_dir = repo / "docs" / "tasks" / slug
         (task_dir / "contract.md").write_text(
@@ -229,6 +274,113 @@ class AwhCliTests(unittest.TestCase):
                             "kind": "automated",
                             "location": "tests/test_cli.py",
                             "summary": "Unit test coverage for long-running support",
+                            "status": "collected",
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def fill_strict_task_evidence(self, repo: Path, slug: str) -> None:
+        task_dir = repo / "docs" / "tasks" / slug
+        (task_dir / "review.md").write_text(
+            "\n".join(
+                [
+                    "# Review Notes",
+                    "",
+                    "## Review Scope",
+                    "",
+                    f"- 대상 task: {slug}",
+                    "- 검토 대상 파일: `src/awh/core.py`, `tests/test_cli.py`",
+                    "- 검토 기준: strict verification signals are evidence-backed",
+                    "",
+                    "## Claimed Outcome",
+                    "",
+                    "- generator가 주장하는 완료 내용: strict verify rejects weak evaluation records",
+                    "",
+                    "## Evidence Checked",
+                    "",
+                    "- 읽은 파일: `src/awh/core.py`, `tests/test_cli.py`",
+                    "- 실행한 명령: `PYTHONPATH=src python3 -m unittest discover -s tests -v`",
+                    "- 확인한 로그 또는 산출물: `docs/exports/generic/strict-task.json`",
+                    "",
+                    "## Findings",
+                    "",
+                    "- Finding: none",
+                    "- Impact: low",
+                    "- Evidence: review checks passed",
+                    "- Suggested fix: none",
+                    "",
+                    "## Residual Risks",
+                    "",
+                    "- 아직 남아 있는 위험: export wording may still need product review",
+                    "",
+                    "## Open Questions",
+                    "",
+                    "- 질문: none",
+                    "",
+                    "## Verdict",
+                    "",
+                    "- pass with risks",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (task_dir / "qa.md").write_text(
+            "\n".join(
+                [
+                    "# QA Notes",
+                    "",
+                    "## QA Scope",
+                    "",
+                    f"- 대상 task: {slug}",
+                    "- 환경: local test repo",
+                    "- URL, route, endpoint, job: `awh verify --task strict-task --strict`",
+                    "",
+                    "## Scenarios",
+                    "",
+                    "### Scenario 1",
+                    "",
+                    "- 절차: run strict verification after filling review, QA, and evidence records",
+                    "- 기대 결과: command exits with code 0",
+                    "- 실제 결과: command passed",
+                    "- 증거: terminal output captured in local test run",
+                    "",
+                    "## Regression Checks",
+                    "",
+                    "- 유지되어야 하는 기존 동작: normal `awh verify` still accepts non-strict-ready tasks",
+                    "- 확인 결과: confirmed in unit tests",
+                    "",
+                    "## Issues Found",
+                    "",
+                    "- Issue: none",
+                    "- Repro: n/a",
+                    "- Severity: none",
+                    "- Suggested next step: none",
+                    "",
+                    "## Verdict",
+                    "",
+                    "- pass",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (task_dir / "evidence").mkdir(parents=True, exist_ok=True)
+        (task_dir / "evidence" / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "artifacts": [
+                        {
+                            "id": "evidence-101",
+                            "kind": "automated",
+                            "location": "tests/test_cli.py",
+                            "summary": "Strict verification unit tests passed",
                             "status": "collected",
                         }
                     ],
@@ -448,6 +600,70 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("manifest.json", result.stdout)
             self.assertIn("invalid `kind`", result.stdout)
 
+    def test_verify_strict_requires_repo_evaluation_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+
+            result = self.run_cli("verify", "--repo", str(repo), "--strict")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Regression Guard", result.stdout)
+            self.assertIn("Rollback", result.stdout)
+            self.assertIn("Human Confirmation", result.stdout)
+
+            self.fill_strict_repo_harness(repo)
+            result = self.run_cli("verify", "--repo", str(repo), "--strict")
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("passed strict readiness checks", result.stdout)
+
+    def test_verify_strict_requires_task_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.fill_strict_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "strict-task",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "general",
+                ).returncode,
+                0,
+            )
+            self.fill_task_harness(repo, "strict-task")
+
+            result = self.run_cli("verify", "--repo", str(repo), "--task", "strict-task", "--strict")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("review.md", result.stdout)
+            self.assertIn("qa.md", result.stdout)
+            self.assertIn("evidence/manifest.json", result.stdout)
+
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "augment",
+                    "strict-task",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "general",
+                    "--review",
+                    "--qa",
+                    "--evidence-manifest",
+                ).returncode,
+                0,
+            )
+            self.fill_strict_task_evidence(repo, "strict-task")
+
+            result = self.run_cli("verify", "--repo", str(repo), "--task", "strict-task", "--strict")
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("passed strict readiness checks", result.stdout)
+
     def test_doctor_recommends_long_running_for_plan_tasks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
@@ -608,7 +824,7 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("docs/tasks/long-export/feature_list.json", codex_text)
             self.assertIn("feature counts:", codex_text)
             self.assertIn("current focus:", codex_text)
-            self.assertIn("progress next step: step: wire parsed feature counts into the Codex task packet", codex_text)
+            self.assertIn("progress next step: wire parsed feature counts into the Codex task packet", codex_text)
             self.assertNotIn("# Task Contract", codex_text)
             self.assertNotIn("# Session Handoff", codex_text)
 
@@ -642,10 +858,10 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("briefing", generic_payload)
             self.assertEqual(generic_payload["structured"]["feature_list"]["task_slug"], "long-export")
             self.assertEqual(generic_payload["structured"]["evidence_manifest"]["artifacts"][0]["id"], "evidence-001")
-            self.assertEqual(generic_payload["briefing"]["current_focus"], "focus: finish export summaries")
+            self.assertEqual(generic_payload["briefing"]["current_focus"], "finish export summaries")
             self.assertEqual(
                 generic_payload["briefing"]["progress_next_step"],
-                "step: wire parsed feature counts into the Codex task packet",
+                "wire parsed feature counts into the Codex task packet",
             )
 
     def test_export_parses_multiline_contract_and_role_fields(self) -> None:
@@ -771,6 +987,10 @@ class AwhCliTests(unittest.TestCase):
             self.assertEqual(new_help.returncode, 0)
             self.assertIn("--long-running", new_help.stdout)
             self.assertIn("--init-script", new_help.stdout)
+
+            verify_help = self.run_cli("verify", "--help")
+            self.assertEqual(verify_help.returncode, 0)
+            self.assertIn("--strict", verify_help.stdout)
 
     def test_shell_new_task_supports_long_running(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

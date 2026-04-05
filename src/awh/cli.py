@@ -16,8 +16,10 @@ from .core import (
     task_plan,
     verify_repo,
     verify_repo_contents,
+    verify_repo_strict_contents,
     verify_task,
     verify_task_contents,
+    verify_task_strict_contents,
 )
 
 
@@ -43,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser = subparsers.add_parser("verify", help="Check harness file health.")
     verify_parser.add_argument("--repo", default=".", help="Target repository path. Defaults to the current directory.")
     verify_parser.add_argument("--task", help="Task slug to validate in addition to the repo-level files.")
+    verify_parser.add_argument("--strict", action="store_true", help="Require evidence-backed evaluation artifacts.")
 
     doctor_parser = subparsers.add_parser("doctor", help="Suggest the next harness step.")
     doctor_parser.add_argument("--repo", default=".", help="Target repository path. Defaults to the current directory.")
@@ -117,7 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     dry_run=args.dry_run,
                 )
         if args.command == "verify":
-            return run_verify(args.repo, task_slug=args.task)
+            return run_verify(args.repo, task_slug=args.task, strict=args.strict)
         if args.command == "doctor":
             return run_doctor(args.repo)
         if args.command == "export":
@@ -227,7 +230,7 @@ def run_task_write(
     return 0
 
 
-def run_verify(repo_arg: str, *, task_slug: str | None) -> int:
+def run_verify(repo_arg: str, *, task_slug: str | None, strict: bool) -> int:
     repo = ensure_target_repo(repo_arg)
     missing = verify_repo(repo)
     if missing:
@@ -242,6 +245,13 @@ def run_verify(repo_arg: str, *, task_slug: str | None) -> int:
         for issue in repo_issues:
             print(f"- {issue}")
         return 1
+    if strict:
+        strict_repo_issues = verify_repo_strict_contents(repo)
+        if strict_repo_issues:
+            print("Repository harness files passed basic readiness but are not strict-ready yet:")
+            for issue in strict_repo_issues:
+                print(f"- {issue}")
+            return 1
 
     if task_slug:
         missing_task = verify_task(repo, task_slug)
@@ -256,9 +266,21 @@ def run_verify(repo_arg: str, *, task_slug: str | None) -> int:
             for issue in task_issues:
                 print(f"- {issue}")
             return 1
+        if strict:
+            strict_task_issues = verify_task_strict_contents(repo, task_slug)
+            if strict_task_issues:
+                print(f"Task `{task_slug}` passed basic readiness but is not strict-ready yet:")
+                for issue in strict_task_issues:
+                    print(f"- {issue}")
+                return 1
+            print(f"Task `{task_slug}` passed strict readiness checks.")
+            return 0
         print(f"Task `{task_slug}` passed readiness checks.")
         return 0
 
+    if strict:
+        print("Repository passed strict readiness checks.")
+        return 0
     print("Repository passed readiness checks.")
     return 0
 

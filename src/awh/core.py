@@ -250,6 +250,42 @@ def verify_repo_contents(repo: Path) -> list[str]:
     return issues
 
 
+def verify_repo_strict_contents(repo: Path) -> list[str]:
+    verification_text = _read_optional_file(repo / "docs" / "verification-plan.md")
+    if not verification_text:
+        return []
+
+    issues: list[str] = []
+    regression_behaviors = _extract_all_labeled_entries(
+        verification_text,
+        "유지되어야 하는 기존 동작",
+        "regression guard",
+    )
+    regression_checks = _extract_all_labeled_entries(
+        verification_text,
+        "그것을 지키는 체크",
+        "regression check",
+    )
+    rollback = _extract_all_labeled_entries(
+        verification_text,
+        "실패 시 끄거나 되돌리는 방법",
+        "rollback",
+    )
+    human_confirmation = _extract_all_labeled_entries(
+        verification_text,
+        "여전히 사람이 판단해야 하는 항목",
+        "human confirmation",
+    )
+
+    if not regression_behaviors or not regression_checks:
+        issues.append("Add a filled `Regression Guard` section to `docs/verification-plan.md`.")
+    if not rollback:
+        issues.append("Add a filled `Rollback` section to `docs/verification-plan.md`.")
+    if not human_confirmation:
+        issues.append("Add at least one `Human Confirmation` item to `docs/verification-plan.md`.")
+    return issues
+
+
 def verify_task_contents(repo: Path, slug: str) -> list[str]:
     validate_task_slug(slug)
     task_dir = repo / "docs" / "tasks" / slug
@@ -279,6 +315,69 @@ def verify_task_contents(repo: Path, slug: str) -> list[str]:
     if not _extract_all_labeled_entries(handoff, "다음 세션은 이것부터 시작", "exact next step"):
         issues.append(f"Add the exact next step to `docs/tasks/{slug}/handoff.md`.")
     issues.extend(verify_task_long_running_contents(repo, slug))
+    return issues
+
+
+def verify_task_strict_contents(repo: Path, slug: str) -> list[str]:
+    validate_task_slug(slug)
+    task_dir = repo / "docs" / "tasks" / slug
+    issues: list[str] = []
+
+    review_path = task_dir / "review.md"
+    qa_path = task_dir / "qa.md"
+    evidence_manifest_path = task_dir / "evidence" / "manifest.json"
+
+    if not review_path.exists():
+        issues.append(f"Add `docs/tasks/{slug}/review.md` before running `verify --strict`.")
+    else:
+        review_text = _read_file(review_path)
+        if not _extract_all_labeled_entries(review_text, "generator가 주장하는 완료 내용", "claimed outcome"):
+            issues.append(f"Capture the claimed outcome in `docs/tasks/{slug}/review.md`.")
+        if not _extract_all_labeled_entries(review_text, "실행한 명령", "commands run"):
+            issues.append(f"Record at least one executed verification command in `docs/tasks/{slug}/review.md`.")
+        if not (
+            _extract_all_labeled_entries(review_text, "확인한 로그 또는 산출물", "checked outputs")
+            or _extract_all_labeled_entries(review_text, "읽은 파일", "read files")
+        ):
+            issues.append(f"Record the checked evidence in `docs/tasks/{slug}/review.md`.")
+        if not _extract_all_labeled_entries(review_text, "아직 남아 있는 위험", "residual risks"):
+            issues.append(f"Capture residual risks in `docs/tasks/{slug}/review.md`.")
+        if not _section_summary_items(review_text, "Verdict"):
+            issues.append(f"Add a reviewer verdict to `docs/tasks/{slug}/review.md`.")
+
+    if not qa_path.exists():
+        issues.append(f"Add `docs/tasks/{slug}/qa.md` before running `verify --strict`.")
+    else:
+        qa_text = _read_file(qa_path)
+        if not (
+            _extract_all_labeled_entries(qa_text, "절차", "procedure")
+            or _extract_all_labeled_entries(qa_text, "URL, route, endpoint, job", "runtime target")
+        ):
+            issues.append(f"Record at least one runtime or manual scenario in `docs/tasks/{slug}/qa.md`.")
+        if not _extract_all_labeled_entries(qa_text, "실제 결과", "actual result"):
+            issues.append(f"Record the actual QA result in `docs/tasks/{slug}/qa.md`.")
+        if not _extract_all_labeled_entries(qa_text, "증거", "evidence"):
+            issues.append(f"Record QA evidence in `docs/tasks/{slug}/qa.md`.")
+        if not _section_summary_items(qa_text, "Verdict"):
+            issues.append(f"Add a QA verdict to `docs/tasks/{slug}/qa.md`.")
+
+    if not evidence_manifest_path.exists():
+        issues.append(f"Add `docs/tasks/{slug}/evidence/manifest.json` before running `verify --strict`.")
+    else:
+        evidence_errors = _evidence_manifest_validation_errors(evidence_manifest_path)
+        issues.extend(evidence_errors)
+        if not evidence_errors:
+            evidence_manifest = _load_evidence_manifest(evidence_manifest_path)
+            collected = [
+                artifact
+                for artifact in evidence_manifest.get("artifacts", [])
+                if isinstance(artifact, dict) and artifact.get("status") == "collected"
+            ]
+            if not collected:
+                issues.append(
+                    f"Record at least one collected evidence artifact in `docs/tasks/{slug}/evidence/manifest.json`."
+                )
+
     return issues
 
 
@@ -773,10 +872,16 @@ def _task_briefing_payload(repo: Path, task_slug: str) -> dict[str, Any]:
     feature_list = _load_feature_list(feature_list_path) if feature_list_path.exists() else None
     evidence_manifest = _load_evidence_manifest(evidence_manifest_path) if evidence_manifest_path.exists() else None
 
-    current_focus_items = _section_summary_items(progress_text, "Current Focus")
+    current_focus_items = _section_labeled_entries(progress_text, "Current Focus", "focus", "current focus")
+    if not current_focus_items:
+        current_focus_items = _section_summary_items(progress_text, "Current Focus")
     recent_sessions = _section_summary_items(progress_text, "Recent Sessions")
-    open_risks = _section_summary_items(progress_text, "Open Risks")
-    useful_commands = _section_summary_items(progress_text, "Useful Commands")
+    open_risks = _section_labeled_entries(progress_text, "Open Risks", "risk", "open risk")
+    if not open_risks:
+        open_risks = _section_summary_items(progress_text, "Open Risks")
+    useful_commands = _section_labeled_entries(progress_text, "Useful Commands", "command", "useful command")
+    if not useful_commands:
+        useful_commands = _section_summary_items(progress_text, "Useful Commands")
 
     return {
         "task_slug": task_slug,
@@ -1328,6 +1433,9 @@ def _load_evidence_manifest(path: Path) -> dict[str, Any]:
 
 
 def _progress_exact_next_step(text: str) -> str | None:
+    labeled = _section_labeled_entries(text, "Exact Next Step", "step", "next step")
+    if labeled:
+        return labeled[0]
     for line in _section_body_lines(text, "Exact Next Step"):
         normalized = _normalize_extracted_item(line)
         if normalized:
@@ -1344,6 +1452,15 @@ def _section_summary_items(text: str | None, heading: str) -> list[str]:
         if normalized and not _is_template_placeholder(normalized):
             items.append(normalized)
     return items
+
+
+def _section_labeled_entries(text: str | None, heading: str, *labels: str) -> list[str]:
+    if not text:
+        return []
+    body_lines = _section_body_lines(text, heading)
+    if not body_lines:
+        return []
+    return _extract_all_labeled_entries("\n".join(body_lines), *labels)
 
 
 def _section_body_lines(text: str, heading: str) -> list[str]:

@@ -97,6 +97,7 @@ Examples:
 ```bash
 awh verify
 awh verify --task bootstrap-api
+awh verify --task bootstrap-api --strict
 ```
 
 Expected behavior:
@@ -105,6 +106,7 @@ Expected behavior:
 - validates that repo-level files are filled enough to be usable
 - validates that task directories are both complete and meaningfully filled
 - validates optional long-running JSON files when they are present
+- supports `--strict` to require stronger regression, rollback, review, QA, and evidence records
 - prints gaps without editing files
 
 ### `awh doctor`

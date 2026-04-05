@@ -85,6 +85,12 @@ Move exports from document dumps toward compact briefings:
 - require explicit automated and runtime/manual evidence
 - make benchmark-oriented claims secondary to repo-local verification evidence
 
+Status on 2026-04-05:
+
+- implemented in the CLI and core validators
+- strict mode now checks repo-level regression guard, rollback, and human confirmation
+- strict mode now checks task-level review, QA, and collected evidence artifacts
+
 ### Phase 5: Multi-Agent Policy
 
 - keep multi-agent docs available

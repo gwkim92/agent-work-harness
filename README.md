@@ -105,6 +105,8 @@ awh task new checkout-hardening --profile backend --repo "$REPO" --plan --long-r
 Then fill the generated repo and task files before relying on `awh verify`.
 `verify` now checks for missing content, not only missing files.
 If `feature_list.json` or `evidence/manifest.json` exist, `verify --task` also validates their JSON structure.
+Use `awh verify --strict` when you want evidence-backed evaluation readiness instead of basic scaffolding readiness.
+Strict mode requires a stronger `docs/verification-plan.md` plus meaningful `review.md`, `qa.md`, and `evidence/manifest.json` task records.
 
 To add missing task artifacts later without overwriting existing files:
 
