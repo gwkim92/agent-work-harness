@@ -107,6 +107,8 @@ Then fill the generated repo and task files before relying on `awh verify`.
 If `feature_list.json` or `evidence/manifest.json` exist, `verify --task` also validates their JSON structure.
 Use `awh verify --strict` when you want evidence-backed evaluation readiness instead of basic scaffolding readiness.
 Strict mode requires a stronger `docs/verification-plan.md` plus meaningful `review.md`, `qa.md`, and `evidence/manifest.json` task records.
+`awh doctor` now recommends `roles.md` and `topology.md` conservatively.
+It only suggests multi-agent docs when plan, evaluator, ownership, and long-running signals are strong enough, and it biases toward centralized coordination with a separate evaluator gate.
 
 To add missing task artifacts later without overwriting existing files:
 

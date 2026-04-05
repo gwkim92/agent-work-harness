@@ -97,6 +97,12 @@ Status on 2026-04-05:
 - tighten the criteria for recommending multi-agent execution
 - prefer centralized coordination and explicit evaluator separation
 
+Status on 2026-04-05:
+
+- implemented as a conservative doctor/export policy layer
+- multi-agent docs are recommended only when plan, evaluator, ownership, and long-running signals are strong enough
+- policy output now prefers centralized coordination and a separate evaluator gate
+
 ## Source Notes
 
 This roadmap is aligned with:

@@ -63,6 +63,12 @@
 - 어떤 artifact를 서로 주고받을지
 - 어떤 역할이 최종 verification gate를 쥘지
 
+권장 순서:
+
+- 먼저 evaluator 분리를 확보한다
+- 다음으로 `planner -> generator -> evaluator` 또는 `coordinator + specialists`를 검토한다
+- `parallel specialists -> integrator`는 ownership 분리가 문서로 분명하고 integrator가 명시될 때만 선택한다
+
 참고:
 
 - `guides/multi_agent_patterns.md`

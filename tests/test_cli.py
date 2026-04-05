@@ -391,6 +391,161 @@ class AwhCliTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def fill_multi_agent_docs(self, repo: Path, slug: str) -> None:
+        task_dir = repo / "docs" / "tasks" / slug
+        (task_dir / "roles.md").write_text(
+            "\n".join(
+                [
+                    "# Multi-Agent Roles",
+                    "",
+                    "## Why Multi-Agent",
+                    "",
+                    "- 왜 single-agent로는 부족한가: ownership spans multiple surfaces and coordination costs are rising",
+                    "- 어떤 병목을 풀기 위해 역할을 나누는가: keep routing separate from implementation and evaluation",
+                    "",
+                    "## Chosen Pattern",
+                    "",
+                    "- 선택한 패턴: coordinator + specialists",
+                    "- 이 패턴이 맞는 이유: shared routing is needed across code and tests",
+                    "- 다른 패턴을 쓰지 않은 이유: fully parallel fan-out would increase merge risk",
+                    "",
+                    "## Shared Constraints",
+                    "",
+                    "- 공통 목표: land a verified CLI change safely",
+                    "- 공통 금지사항: no ad hoc changes outside the contract scope",
+                    "- 공통 verification 기준: unit tests and strict verification evidence stay green",
+                    "- 공통 source of truth: `docs/tasks/` canonical files",
+                    f"- 공통 artifact 위치: `docs/tasks/{slug}/artifacts/`",
+                    "- 최종 decision maker: evaluator",
+                    "",
+                    "## Role 1",
+                    "",
+                    "- 이름: coordinator",
+                    "- 타입: coordinator",
+                    "- 책임: route work and keep handoffs explicit",
+                    "- 성공 조건: specialists work from the same canonical state",
+                    "- 입력: `contract.md`, `handoff.md`, `plan.md`",
+                    "- 출력: updated handoff and task routing notes",
+                    "- 생성하거나 갱신할 artifact: `handoff.md`",
+                    f"- 수정 가능한 범위: `docs/tasks/{slug}/**`",
+                    "- 수정 금지 범위: `src/awh/**`",
+                    "- handoff 대상: specialist-impl, evaluator",
+                    "- escalation trigger: ownership conflict or missing evidence",
+                    "",
+                    "## Role 2",
+                    "",
+                    "- 이름: specialist-impl",
+                    "- 타입: specialist",
+                    "- 책임: implement scoped CLI/core changes",
+                    "- 성공 조건: code changes stay inside assigned files",
+                    "- 입력: `contract.md`, `plan.md`, coordinator routing notes",
+                    "- 출력: code diff and updated handoff",
+                    "- 생성하거나 갱신할 artifact: `handoff.md`",
+                    "- 수정 가능한 범위: `src/awh/**`, `tests/**`",
+                    "- 수정 금지 범위: `docs/verification-plan.md`",
+                    "- handoff 대상: evaluator",
+                    "- escalation trigger: cross-surface conflict",
+                    "",
+                    "## Role 3",
+                    "",
+                    "- 이름: evaluator",
+                    "- 타입: evaluator",
+                    "- 책임: verify claims and own the final gate",
+                    "- 성공 조건: evidence and verdict are explicit",
+                    "- 입력: code diff, `review.md`, `qa.md`, `evidence/manifest.json`",
+                    "- 출력: updated review and QA verdicts",
+                    "- 생성하거나 갱신할 artifact: `review.md`, `qa.md`, `evidence/manifest.json`",
+                    f"- 수정 가능한 범위: `docs/tasks/{slug}/**`",
+                    "- 수정 금지 범위: `src/awh/**`",
+                    "- handoff 대상: coordinator",
+                    "- escalation trigger: evidence does not support claimed outcome",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (task_dir / "topology.md").write_text(
+            "\n".join(
+                [
+                    "# Multi-Agent Topology",
+                    "",
+                    "## Topology Type",
+                    "",
+                    "- coordinator + specialists",
+                    "",
+                    "## Why This Topology",
+                    "",
+                    "- 왜 이 구조가 필요한가: code and evaluation work should not compete for the same context",
+                    "- single-agent 대비 기대 이점: clearer routing and cleaner review separation",
+                    "- 어떤 병목을 직접 줄이는가: context switching across implementation and evaluation",
+                    "",
+                    "## Topology Rules",
+                    "",
+                    f"- source of truth는 어디인가: `docs/tasks/{slug}/**`",
+                    f"- 공통 artifact 위치는 어디인가: `docs/tasks/{slug}/artifacts/`",
+                    "- 누가 final gate를 쥐는가: evaluator",
+                    "- 누가 topology 변경 권한을 갖는가: coordinator",
+                    "",
+                    "## Node Definitions",
+                    "",
+                    "### Node 1",
+                    "",
+                    "- 이름: coordinator",
+                    "- 역할: coordinate and route work",
+                    "- 입력: canonical task docs",
+                    "- 출력: updated handoff state",
+                    f"- ownership: `docs/tasks/{slug}/**`",
+                    "- blocker: conflicting ownership",
+                    "",
+                    "### Node 2",
+                    "",
+                    "- 이름: specialist-impl",
+                    "- 역할: implementation specialist",
+                    "- 입력: contract, plan, routing notes",
+                    "- 출력: code changes",
+                    "- ownership: `src/awh/**`, `tests/**`",
+                    "- blocker: missing routing decision",
+                    "",
+                    "### Node 3",
+                    "",
+                    "- 이름: evaluator",
+                    "- 역할: independent verification gate",
+                    "- 입력: review, QA, and evidence artifacts",
+                    "- 출력: pass/fail verdict",
+                    f"- ownership: `docs/tasks/{slug}/**`",
+                    "- blocker: insufficient evidence",
+                    "",
+                    "## Handoff Edges",
+                    "",
+                    "- Edge 1:",
+                    "  - from: coordinator",
+                    "  - to: specialist-impl",
+                    "  - handoff artifact: `handoff.md`",
+                    "  - handoff 조건: scope and ownership are explicit",
+                    "",
+                    "- Edge 2:",
+                    "  - from: specialist-impl",
+                    "  - to: evaluator",
+                    "  - handoff artifact: `review.md`, `qa.md`, `evidence/manifest.json`",
+                    "  - handoff 조건: code changes and claimed outcome are recorded",
+                    "",
+                    "## File Ownership",
+                    "",
+                    f"- Node 1 ownership: `docs/tasks/{slug}/**`",
+                    "- Node 2 ownership: `src/awh/**`, `tests/**`",
+                    f"- Node 3 ownership: `docs/tasks/{slug}/**`",
+                    "",
+                    "## Integration Rules",
+                    "",
+                    "- 결과를 누가 합치는가: coordinator",
+                    "- 충돌 시 누가 결정하는가: coordinator",
+                    "- 최종 verification은 누가 책임지는가: evaluator",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_init_default_installs_repo_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
@@ -688,6 +843,34 @@ class AwhCliTests(unittest.TestCase):
             self.assertEqual(doctor.returncode, 0)
             self.assertIn("awh task augment planner-task --long-running", doctor.stdout)
 
+    def test_doctor_recommends_multi_agent_only_with_strong_signals(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "coord-task",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "backend",
+                    "--plan",
+                    "--qa",
+                    "--long-running",
+                ).returncode,
+                0,
+            )
+            self.fill_task_harness(repo, "coord-task")
+            self.fill_long_running_harness(repo, "coord-task")
+
+            doctor = self.run_cli("doctor", "--repo", str(repo))
+            self.assertEqual(doctor.returncode, 0)
+            self.assertIn("awh task augment coord-task --roles --topology", doctor.stdout)
+            self.assertIn("coordinator + specialists", doctor.stdout)
+
     def test_doctor_points_to_long_running_repairs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
@@ -713,6 +896,37 @@ class AwhCliTests(unittest.TestCase):
             self.assertEqual(doctor.returncode, 0)
             self.assertIn("feature_list.json", doctor.stdout)
             self.assertIn("repair the long-running task state files", doctor.stdout)
+
+    def test_doctor_flags_incomplete_multi_agent_docs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "team-task",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "backend",
+                    "--plan",
+                    "--qa",
+                    "--long-running",
+                    "--roles",
+                    "--topology",
+                ).returncode,
+                0,
+            )
+            self.fill_task_harness(repo, "team-task")
+            self.fill_long_running_harness(repo, "team-task")
+
+            doctor = self.run_cli("doctor", "--repo", str(repo))
+            self.assertEqual(doctor.returncode, 0)
+            self.assertIn("multi-agent docs", doctor.stdout)
+            self.assertIn("roles.md", doctor.stdout)
+            self.assertIn("topology.md", doctor.stdout)
 
     def test_export_commands_generate_expected_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -757,8 +971,10 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("tools: Read, Grep, Glob, Bash", coordinator_text)
             self.assertIn("Current briefing", coordinator_text)
             self.assertIn("Verification path", coordinator_text)
+            self.assertIn("Coordination policy", coordinator_text)
             self.assertIn("name: bootstrap-api-reviewer", reviewer_text)
             self.assertIn("Current verification context", reviewer_text)
+            self.assertIn("Coordination policy", reviewer_text)
 
             codex_task = self.run_cli("export", "codex", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(codex_task.returncode, 0, codex_task.stdout + codex_task.stderr)
@@ -768,6 +984,7 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("## Task Summary", codex_text)
             self.assertIn("## Current State", codex_text)
             self.assertIn("## Verification And Evidence", codex_text)
+            self.assertIn("## Coordination Policy", codex_text)
             self.assertIn("## Canonical References", codex_text)
             self.assertNotIn("# Task Contract", codex_text)
 
@@ -783,6 +1000,7 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn('applyTo: "src/awh/**,tests/**"', copilot_text)
             self.assertIn("Current focus", copilot_text)
             self.assertIn("Next step", copilot_text)
+            self.assertIn("Multi-agent policy", copilot_text)
 
             generic_task = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(generic_task.returncode, 0, generic_task.stdout + generic_task.stderr)
@@ -791,6 +1009,7 @@ class AwhCliTests(unittest.TestCase):
             )
             self.assertIn("briefing", generic_payload)
             self.assertEqual(generic_payload["briefing"]["next_step"], "rerun verification and continue implementation")
+            self.assertIn("multi_agent_policy", generic_payload["briefing"])
 
     def test_long_running_exports_include_structured_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -820,11 +1039,13 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("## Current State", codex_text)
             self.assertIn("## Verification And Evidence", codex_text)
             self.assertIn("## Long-Running State", codex_text)
+            self.assertIn("## Coordination Policy", codex_text)
             self.assertIn("## Canonical References", codex_text)
             self.assertIn("docs/tasks/long-export/feature_list.json", codex_text)
             self.assertIn("feature counts:", codex_text)
             self.assertIn("current focus:", codex_text)
             self.assertIn("progress next step: wire parsed feature counts into the Codex task packet", codex_text)
+            self.assertIn("preferred pattern: coordinator + specialists", codex_text)
             self.assertNotIn("# Task Contract", codex_text)
             self.assertNotIn("# Session Handoff", codex_text)
 
@@ -833,6 +1054,7 @@ class AwhCliTests(unittest.TestCase):
             claude_text = (repo / ".claude" / "agents" / "long-export-coordinator.md").read_text(encoding="utf-8")
             self.assertIn("Current briefing", claude_text)
             self.assertIn("Verification path", claude_text)
+            self.assertIn("Coordination policy", claude_text)
             self.assertIn("docs/tasks/long-export/feature_list.json", claude_text)
             self.assertIn("docs/tasks/long-export/progress.md", claude_text)
             self.assertNotIn("Plan:\n\n# Task Plan", claude_text)
@@ -840,12 +1062,14 @@ class AwhCliTests(unittest.TestCase):
             reviewer_text = (repo / ".claude" / "agents" / "long-export-reviewer.md").read_text(encoding="utf-8")
             self.assertIn("Current verification context", reviewer_text)
             self.assertIn("docs/tasks/long-export/evidence/manifest.json", reviewer_text)
+            self.assertIn("Coordination policy", reviewer_text)
 
             copilot_task = self.run_cli("export", "copilot", "--repo", str(repo), "--task", "long-export")
             self.assertEqual(copilot_task.returncode, 0, copilot_task.stdout + copilot_task.stderr)
             copilot_text = (repo / ".github" / "instructions" / "long-export.instructions.md").read_text(encoding="utf-8")
             self.assertIn("Current focus", copilot_text)
             self.assertIn("Next step", copilot_text)
+            self.assertIn("Multi-agent policy", copilot_text)
             self.assertIn("docs/tasks/long-export/progress.md", copilot_text)
             self.assertIn("docs/tasks/long-export/evidence/manifest.json", copilot_text)
 
@@ -862,6 +1086,11 @@ class AwhCliTests(unittest.TestCase):
             self.assertEqual(
                 generic_payload["briefing"]["progress_next_step"],
                 "wire parsed feature counts into the Codex task packet",
+            )
+            self.assertTrue(generic_payload["briefing"]["multi_agent_policy"]["recommended"])
+            self.assertEqual(
+                generic_payload["briefing"]["multi_agent_policy"]["preferred_pattern"],
+                "coordinator + specialists",
             )
 
     def test_export_parses_multiline_contract_and_role_fields(self) -> None:

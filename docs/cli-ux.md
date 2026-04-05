@@ -119,6 +119,8 @@ Expected behavior:
 - recommends the next concrete command or document to edit
 - suggests missing verification or evaluator artifacts
 - suggests long-running scaffolds for planned tasks that need session state
+- recommends multi-agent docs only when plan/evaluator/ownership signals are strong
+- prefers `planner -> generator -> evaluator` or `coordinator + specialists` before fan-out patterns
 
 ### `awh upgrade`
 

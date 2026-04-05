@@ -47,6 +47,13 @@
 - `roles.md`
 - `topology.md`
 
+추가 규칙:
+
+- 가능하면 먼저 evaluator artifact를 분리해 둔다
+- 기본 추천 패턴은 `planner -> generator -> evaluator` 또는 `coordinator + specialists`다
+- `parallel specialists -> integrator`는 ownership 분리가 문서로 명확할 때만 쓴다
+- final gate와 handoff artifact가 없으면 아직 multi-agent-ready가 아니다
+
 ## Add Automation Contract When
 
 아래 중 둘 이상이면 automation 계약을 추가 검토한다.

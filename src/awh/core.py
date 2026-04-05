@@ -427,6 +427,10 @@ def present_long_running_artifacts(repo: Path, slug: str) -> list[str]:
     return present
 
 
+def task_has_multi_agent_docs(repo: Path, slug: str) -> bool:
+    return task_artifact_path(repo, slug, "roles").exists() or task_artifact_path(repo, slug, "topology").exists()
+
+
 def doctor_notes(repo: Path) -> list[str]:
     notes: list[str] = []
     missing_repo = verify_repo(repo)
@@ -475,6 +479,18 @@ def doctor_notes(repo: Path) -> list[str]:
         if long_running_notes:
             notes.append(f"Task `{slug}` has long-running artifacts that still need attention.")
             notes.extend(long_running_notes)
+        multi_agent_policy = _task_multi_agent_policy(repo, slug)
+        if multi_agent_policy["docs_present"] and multi_agent_policy["issues"]:
+            notes.append(f"Task `{slug}` has multi-agent docs that still need attention.")
+            notes.extend(multi_agent_policy["issues"])
+        elif multi_agent_policy["recommended"]:
+            notes.append(
+                f"Task `{slug}` may justify multi-agent docs. "
+                f"Prefer `{multi_agent_policy['preferred_pattern']}` and keep the evaluator separate. "
+                f"Consider `awh task augment {slug} --roles --topology`."
+            )
+            if multi_agent_policy["signals"]:
+                notes.append("Signals: " + "; ".join(multi_agent_policy["signals"]))
         if task_missing_evaluators(repo, slug):
             notes.append(
                 f"Task `{slug}` has no evaluator artifacts yet. Consider "
@@ -727,6 +743,7 @@ def _codex_repo_content(repo: Path) -> str:
 def _codex_task_content(repo: Path, task_slug: str) -> str:
     briefing = _task_briefing_payload(repo, task_slug)
     long_running_lines = _codex_long_running_lines(repo, task_slug)
+    coordination_lines = _codex_coordination_lines(briefing["multi_agent_policy"])
     return "\n".join(
         [
             f"# Codex Task Packet: {task_slug}",
@@ -764,6 +781,10 @@ def _codex_task_content(repo: Path, task_slug: str) -> str:
             "## Long-Running State",
             "",
             *long_running_lines,
+            "",
+            "## Coordination Policy",
+            "",
+            *coordination_lines,
             "",
             "## Canonical References",
             "",
@@ -824,6 +845,7 @@ def _copilot_task_content(repo: Path, task_slug: str) -> str:
             f"- Next step: {briefing['next_step'] or briefing['progress_next_step'] or '_See handoff.md._'}",
             f"- Verification commands: {_join_briefing_items(briefing['verification_commands'], '_See contract.md._')}",
             f"- Evidence status: {_counts_text(briefing['evidence_counts'], empty='_No evidence manifest._')}",
+            f"- Multi-agent policy: {_copilot_multi_agent_policy_text(briefing['multi_agent_policy'])}",
             *long_running_guidance,
             f"- Update `docs/tasks/{task_slug}/review.md` and `qa.md` instead of inventing new evaluation standards.",
             f"- Refresh `docs/tasks/{task_slug}/handoff.md` before stopping work.",
@@ -903,6 +925,7 @@ def _task_briefing_payload(repo: Path, task_slug: str) -> dict[str, Any]:
         "feature_counts": _feature_counts(feature_list),
         "evidence_counts": _evidence_counts(evidence_manifest),
         "recent_evidence": _recent_evidence_summaries(evidence_manifest),
+        "multi_agent_policy": _task_multi_agent_policy(repo, task_slug),
         "read_first": _task_read_first_paths(repo, task_slug),
         "references": _task_reference_paths(repo, task_slug),
     }
@@ -918,6 +941,8 @@ def _task_read_first_paths(repo: Path, task_slug: str) -> list[str]:
         task_artifact_path(repo, task_slug, "plan"),
         task_artifact_path(repo, task_slug, "review"),
         task_artifact_path(repo, task_slug, "qa"),
+        task_artifact_path(repo, task_slug, "roles"),
+        task_artifact_path(repo, task_slug, "topology"),
     ]
     return [str(path.relative_to(repo)) for path in candidates if path.exists()]
 
@@ -982,6 +1007,110 @@ def _recent_evidence_summaries(evidence_manifest: dict[str, Any] | None) -> list
         if parts:
             summaries.append(" | ".join(parts))
     return summaries[:3]
+
+
+def _task_multi_agent_policy(repo: Path, task_slug: str) -> dict[str, Any]:
+    task_dir = repo / "docs" / "tasks" / task_slug
+    contract = _read_file(task_dir / "contract.md")
+    roles_path = task_dir / "roles.md"
+    topology_path = task_dir / "topology.md"
+    roles_text = _read_optional_file(roles_path)
+    topology_text = _read_optional_file(topology_path)
+    feature_list_path = task_dir / "feature_list.json"
+    feature_list = _load_feature_list(feature_list_path) if feature_list_path.exists() else None
+
+    mutable_surface_entries = _split_briefing_entries(
+        _extract_all_labeled_entries(contract, "수정 가능한 파일", "수정 가능한 범위", "mutable surface")
+    )
+    non_done_features = 0
+    total_features = 0
+    if feature_list is not None:
+        total_features = len(feature_list.get("features", []))
+        non_done_features = sum(
+            1
+            for feature in feature_list.get("features", [])
+            if isinstance(feature, dict) and feature.get("status") != "done"
+        )
+
+    has_plan = task_has_plan(repo, task_slug)
+    evaluator_paths = [task_dir / "review.md", task_dir / "qa.md"]
+    evaluator_count = sum(1 for path in evaluator_paths if path.exists())
+
+    signals: list[str] = []
+    if evaluator_count:
+        signals.append("evaluator artifacts already exist")
+    if len(mutable_surface_entries) >= 2:
+        signals.append("mutable surface spans multiple areas")
+    if non_done_features >= 2 or total_features >= 3:
+        signals.append("long-running state tracks multiple items")
+
+    preferred_pattern = "coordinator + specialists" if len(mutable_surface_entries) >= 2 else "planner -> generator -> evaluator"
+    docs_present = roles_path.exists() or topology_path.exists()
+    recommended = has_plan and evaluator_count >= 1 and len(signals) >= 2 and not docs_present
+
+    issues: list[str] = []
+    chosen_pattern: str | None = None
+
+    if roles_text:
+        chosen_pattern = _extract_first_labeled_value(roles_text, "선택한 패턴", "chosen pattern")
+        if not _extract_all_labeled_entries(roles_text, "왜 single-agent로는 부족한가", "why single-agent is insufficient"):
+            issues.append(f"Explain why single-agent is insufficient in `docs/tasks/{task_slug}/roles.md`.")
+        if not chosen_pattern:
+            issues.append(f"Choose a concrete pattern in `docs/tasks/{task_slug}/roles.md`.")
+        if not _extract_all_labeled_entries(roles_text, "최종 decision maker", "final decision maker"):
+            issues.append(f"Define the final decision maker in `docs/tasks/{task_slug}/roles.md`.")
+
+        parsed_roles = _parse_roles(roles_text)
+        if not parsed_roles:
+            issues.append(f"Add at least one filled role definition to `docs/tasks/{task_slug}/roles.md`.")
+        else:
+            role_types = {role.get("type", "").strip().lower() for role in parsed_roles if role.get("type")}
+            implementation_roles = {
+                role_type for role_type in role_types if role_type in {"generator", "specialist", "integrator", "coordinator", "planner"}
+            }
+            if len(implementation_roles) >= 2 and "evaluator" not in role_types:
+                issues.append(
+                    f"Separate an evaluator role in `docs/tasks/{task_slug}/roles.md` before relying on multi-agent execution."
+                )
+            for role in parsed_roles:
+                role_name = role.get("name") or role.get("type") or "unnamed role"
+                if not role.get("artifacts"):
+                    issues.append(
+                        f"Define artifact handoff outputs for role `{role_name}` in `docs/tasks/{task_slug}/roles.md`."
+                    )
+                if not role.get("editable"):
+                    issues.append(
+                        f"Define editable ownership for role `{role_name}` in `docs/tasks/{task_slug}/roles.md`."
+                    )
+
+    if topology_text:
+        if not _extract_all_labeled_entries(topology_text, "왜 이 구조가 필요한가", "why this topology"):
+            issues.append(f"Explain why the topology is needed in `docs/tasks/{task_slug}/topology.md`.")
+        if not _extract_all_labeled_entries(topology_text, "누가 final gate를 쥐는가", "final gate"):
+            issues.append(f"Define the final gate in `docs/tasks/{task_slug}/topology.md`.")
+        if not _extract_all_labeled_entries(topology_text, "source of truth는 어디인가", "source of truth"):
+            issues.append(f"Define the source of truth in `docs/tasks/{task_slug}/topology.md`.")
+        if not _extract_all_labeled_entries(topology_text, "handoff artifact", "handoff artifact"):
+            issues.append(f"Add explicit handoff artifacts to `docs/tasks/{task_slug}/topology.md`.")
+    if chosen_pattern:
+        lowered_pattern = chosen_pattern.lower()
+        parsed_roles = _parse_roles(roles_text) if roles_text else []
+        role_types = {role.get("type", "").strip().lower() for role in parsed_roles if role.get("type")}
+        if "coordinator" in lowered_pattern and "coordinator" not in role_types:
+            issues.append(f"Add a coordinator role to `docs/tasks/{task_slug}/roles.md` for the chosen topology.")
+        if "integrator" in lowered_pattern and "integrator" not in role_types:
+            issues.append(f"Add an integrator role to `docs/tasks/{task_slug}/roles.md` for the chosen topology.")
+        if "evaluator" in lowered_pattern and "evaluator" not in role_types:
+            issues.append(f"Add an evaluator role to `docs/tasks/{task_slug}/roles.md` for the chosen topology.")
+
+    return {
+        "docs_present": docs_present,
+        "recommended": recommended,
+        "preferred_pattern": preferred_pattern,
+        "signals": signals,
+        "issues": issues,
+        "chosen_pattern": chosen_pattern,
+    }
 
 
 def _read_file(path: Path) -> str:
@@ -1083,10 +1212,70 @@ def _join_briefing_items(values: str | list[str] | None, empty: str) -> str:
     return "; ".join(filtered) if filtered else empty
 
 
+def _split_briefing_entries(values: list[str]) -> list[str]:
+    entries: list[str] = []
+    for raw_value in values:
+        for part in raw_value.split(","):
+            candidate = part.strip()
+            if candidate:
+                entries.append(candidate)
+    return entries
+
+
 def _counts_text(counts: dict[str, int] | None, *, empty: str) -> str:
     if not counts:
         return empty
     return ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
+
+
+def _codex_coordination_lines(policy: dict[str, Any]) -> list[str]:
+    if policy["docs_present"] and policy["issues"]:
+        return [f"- issue: {issue}" for issue in policy["issues"]]
+    if policy["recommended"]:
+        lines = [
+            f"- recommendation: add `roles.md` and `topology.md` only if you will actually escalate coordination",
+            f"- preferred pattern: {policy['preferred_pattern']}",
+            "- coordination bias: keep a central coordinator and leave evaluation separate",
+        ]
+        if policy["signals"]:
+            lines.append("- signals: " + "; ".join(policy["signals"]))
+        return lines
+    if policy["docs_present"]:
+        return [
+            f"- chosen pattern: {policy['chosen_pattern'] or '_See roles.md._'}",
+            "- policy: keep coordination centralized and preserve a separate evaluator gate",
+        ]
+    return ["- policy: stay single-agent unless stronger parallel ownership signals appear"]
+
+
+def _claude_multi_agent_lines(policy: dict[str, Any]) -> list[str]:
+    if policy["docs_present"] and policy["issues"]:
+        return [f"- {issue}" for issue in policy["issues"]]
+    if policy["recommended"]:
+        lines = [
+            f"- preferred pattern: `{policy['preferred_pattern']}`",
+            "- keep coordination centralized and avoid parallel execution without explicit ownership",
+            "- keep the evaluator separate from implementation",
+        ]
+        if policy["signals"]:
+            lines.append("- recommendation signals: " + "; ".join(policy["signals"]))
+        return lines
+    if policy["docs_present"]:
+        return [
+            f"- chosen pattern: `{policy['chosen_pattern'] or 'see roles.md'}`",
+            "- preserve centralized coordination and an explicit evaluator gate",
+        ]
+    return ["- stay single-agent unless the task grows stronger coordination signals"]
+
+
+def _copilot_multi_agent_policy_text(policy: dict[str, Any]) -> str:
+    if policy["docs_present"] and policy["issues"]:
+        return "repair `roles.md` / `topology.md` before treating the task as multi-agent-ready"
+    if policy["recommended"]:
+        return f"if you escalate, prefer `{policy['preferred_pattern']}` and keep evaluation separate"
+    if policy["docs_present"]:
+        return f"use `{policy['chosen_pattern'] or 'the documented pattern'}` and keep evaluation separate"
+    return "stay single-agent by default"
 
 
 def _parse_roles(text: str | None) -> list[dict[str, str]]:
@@ -1140,6 +1329,7 @@ def _claude_agent_file(*, name: str, description: str, tools: str, body: str) ->
 
 def _claude_coordinator_body(repo: Path, task_slug: str) -> str:
     briefing = _task_briefing_payload(repo, task_slug)
+    multi_agent_lines = _claude_multi_agent_lines(briefing["multi_agent_policy"])
     return "\n".join(
         [
             f"You coordinate the task `{task_slug}`.",
@@ -1161,6 +1351,9 @@ def _claude_coordinator_body(repo: Path, task_slug: str) -> str:
             f"- evidence status: {_counts_text(briefing['evidence_counts'], empty='_No evidence manifest._')}",
             f"- recent evidence: {_join_briefing_items(briefing['recent_evidence'], '_No collected evidence yet._')}",
             "",
+            "Coordination policy:",
+            *multi_agent_lines,
+            "",
             "Canonical references to consult as needed:",
             *[f"- `{path}`" for path in briefing["references"]],
             "",
@@ -1175,6 +1368,7 @@ def _claude_coordinator_body(repo: Path, task_slug: str) -> str:
 
 def _claude_reviewer_body(repo: Path, task_slug: str, review: str | None, qa: str | None) -> str:
     briefing = _task_briefing_payload(repo, task_slug)
+    multi_agent_lines = _claude_multi_agent_lines(briefing["multi_agent_policy"])
     reviewer_paths = [
         f"docs/tasks/{task_slug}/review.md",
         f"docs/tasks/{task_slug}/qa.md",
@@ -1201,6 +1395,9 @@ def _claude_reviewer_body(repo: Path, task_slug: str, review: str | None, qa: st
             f"- verification commands: {_join_briefing_items(briefing['verification_commands'], '_See contract.md._')}",
             f"- evidence status: {_counts_text(briefing['evidence_counts'], empty='_No evidence manifest._')}",
             f"- recent evidence: {_join_briefing_items(briefing['recent_evidence'], '_No collected evidence yet._')}",
+            "",
+            "Coordination policy:",
+            *multi_agent_lines,
             "",
             "Priorities:",
             "- validate claims against canonical task artifacts",
