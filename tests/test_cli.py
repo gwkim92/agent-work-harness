@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -22,6 +23,220 @@ class AwhCliTests(unittest.TestCase):
             capture_output=True,
             text=True,
             check=False,
+        )
+
+    def fill_repo_harness(self, repo: Path) -> None:
+        (repo / "AGENTS.md").write_text(
+            "\n".join(
+                [
+                    "# Repository Working Map",
+                    "",
+                    "## Purpose",
+                    "",
+                    "이 저장소의 목적은 `Agent Work Harness`를 개발, 유지보수, 검증하는 것이다.",
+                    "",
+                    "에이전트는 아래를 우선한다.",
+                    "",
+                    "- 낙관보다 정확성",
+                    "- 큰 수정보다 작고 검토 가능한 변경",
+                    "- 완료 주장보다 검증 증거",
+                    "",
+                    "## Repository Map",
+                    "",
+                    "- 앱 코드: `src/awh/**`",
+                    "- 테스트: `tests/**`",
+                    "- 문서와 설계 노트: `docs/**`, `guides/**`",
+                    "- 스크립트와 툴링: `scripts/**`",
+                    "- 민감하거나 고위험인 경로: `pyproject.toml`",
+                    "",
+                    "## Core Commands",
+                    "",
+                    "- 설치: `python3 -m pip install -e .`",
+                    "- 개발 서버 또는 실행: `PYTHONPATH=src python3 -m awh --help`",
+                    "- 테스트: `PYTHONPATH=src python3 -m unittest discover -s tests -v`",
+                    "- 린트: `python3 -m compileall src tests`",
+                    "- 타입체크 또는 빌드: `python3 -m compileall src tests`",
+                    "- E2E 또는 스모크: `PYTHONPATH=src python3 -m awh init --dry-run --repo .`",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (repo / "docs" / "verification-plan.md").write_text(
+            "\n".join(
+                [
+                    "# Verification Plan",
+                    "",
+                    "## Scope",
+                    "",
+                    "- 대상 기능군 또는 시스템: CLI install, verify, export flows",
+                    "",
+                    "## Automated Checks",
+                    "",
+                    "- 명령: `PYTHONPATH=src python3 -m unittest discover -s tests -v`",
+                    "- 무엇을 증명하는가: CLI behavior stays correct",
+                    "- 통과 조건: all tests pass",
+                    "",
+                    "## Manual Checks",
+                    "",
+                    "- 시나리오: run `awh init --dry-run` in a temp repo",
+                    "- 기대 동작: planned writes are shown and no files are created",
+                    "",
+                    "## Browser Or Runtime Checks",
+                    "",
+                    "- URL, route, job, endpoint: `awh verify`",
+                    "- 수행 경로: run after filling required repo files",
+                    "- 확인할 증거: command exits with code 0",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def fill_task_harness(self, repo: Path, slug: str) -> None:
+        task_dir = repo / "docs" / "tasks" / slug
+        (task_dir / "contract.md").write_text(
+            "\n".join(
+                [
+                    "# Task Contract",
+                    "",
+                    "## Task",
+                    "",
+                    f"- 이름: {slug}",
+                    "- 요청: tighten CLI verification behavior",
+                    "- 담당: tests",
+                    "- 날짜: 2026-04-05",
+                    "",
+                    "## Goal",
+                    "",
+                    "- 이 작업이 끝났을 때 반드시 참이어야 하는 상태: readiness checks fail on blank scaffolds and pass on filled docs",
+                    "",
+                    "## Scope",
+                    "",
+                    "- 포함: `src/awh/**`, `tests/**`",
+                    "- 제외: `templates/**` outside the tested task files",
+                    "",
+                    "## Mutable Surface",
+                    "",
+                    "- 수정 가능한 파일: `src/awh/**`, `tests/**`",
+                    "- 수정 금지 파일: `README.md`",
+                    "- 검증에 사용할 명령: `PYTHONPATH=src python3 -m unittest discover -s tests -v`",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (task_dir / "handoff.md").write_text(
+            "\n".join(
+                [
+                    "# Session Handoff",
+                    "",
+                    "## Current Status",
+                    "",
+                    "- 완료: repo-level setup captured",
+                    "- 진행 중: task-level verification updates",
+                    "- 막힌 점: none",
+                    "",
+                    "## Exact Next Step",
+                    "",
+                    "- 다음 세션은 이것부터 시작: rerun verification and continue implementation",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def fill_long_running_harness(self, repo: Path, slug: str) -> None:
+        task_dir = repo / "docs" / "tasks" / slug
+        (task_dir / "feature_list.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "task_slug": slug,
+                    "features": [
+                        {
+                            "id": "feature-001",
+                            "description": "Set up additive long-running support",
+                            "status": "done",
+                            "priority": "high",
+                            "notes": "CLI and scaffolding are in place",
+                            "evidence_refs": ["evidence-001"],
+                        },
+                        {
+                            "id": "feature-002",
+                            "description": "Export long-running state",
+                            "status": "in_progress",
+                            "priority": "medium",
+                            "notes": "Codex export needs summary data",
+                            "evidence_refs": [],
+                        },
+                        {
+                            "id": "feature-003",
+                            "description": "Tighten shell fallback coverage",
+                            "status": "todo",
+                            "priority": "low",
+                            "notes": "",
+                            "evidence_refs": [],
+                        },
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (task_dir / "progress.md").write_text(
+            "\n".join(
+                [
+                    "# Long-Running Progress",
+                    "",
+                    "## Current Focus",
+                    "",
+                    "- focus: finish export summaries",
+                    "",
+                    "## Recent Sessions",
+                    "",
+                    "- 2026-04-05:",
+                    "  - did: added long-running artifacts",
+                    "  - evidence: draft tests",
+                    "",
+                    "## Exact Next Step",
+                    "",
+                    "- step: wire parsed feature counts into the Codex task packet",
+                    "",
+                    "## Open Risks",
+                    "",
+                    "- risk: malformed JSON could break exports",
+                    "- mitigation: validate before export",
+                    "",
+                    "## Useful Commands",
+                    "",
+                    "- command: `PYTHONPATH=src python3 -m unittest discover -s tests -v`",
+                    "- why: confirm CLI behavior",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (task_dir / "evidence").mkdir(parents=True, exist_ok=True)
+        (task_dir / "evidence" / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "artifacts": [
+                        {
+                            "id": "evidence-001",
+                            "kind": "automated",
+                            "location": "tests/test_cli.py",
+                            "summary": "Unit test coverage for long-running support",
+                            "status": "collected",
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
         )
 
     def test_init_default_installs_repo_files(self) -> None:
@@ -83,6 +298,50 @@ class AwhCliTests(unittest.TestCase):
             self.assertTrue((task_dir / "qa.md").exists())
             self.assertIn("skipped existing file", augmented.stdout)
 
+    def test_long_running_task_artifacts_and_permissions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+
+            created = self.run_cli(
+                "task",
+                "new",
+                "long-runner",
+                "--repo",
+                str(repo),
+                "--profile",
+                "general",
+                "--feature-list",
+            )
+            self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+            task_dir = repo / "docs" / "tasks" / "long-runner"
+            feature_list = task_dir / "feature_list.json"
+            progress = task_dir / "progress.md"
+            init_script = task_dir / "init.sh"
+            evidence_manifest = task_dir / "evidence" / "manifest.json"
+            self.assertTrue(feature_list.exists())
+            self.assertFalse(progress.exists())
+            self.assertFalse(init_script.exists())
+            self.assertFalse(evidence_manifest.exists())
+
+            feature_list.write_text('{"version":1,"task_slug":"long-runner","features":[]}\n', encoding="utf-8")
+            augmented = self.run_cli(
+                "task",
+                "augment",
+                "long-runner",
+                "--repo",
+                str(repo),
+                "--profile",
+                "general",
+                "--long-running",
+            )
+            self.assertEqual(augmented.returncode, 0, augmented.stdout + augmented.stderr)
+            self.assertEqual(feature_list.read_text(encoding="utf-8"), '{"version":1,"task_slug":"long-runner","features":[]}\n')
+            self.assertTrue(progress.exists())
+            self.assertTrue(init_script.exists())
+            self.assertTrue(evidence_manifest.exists())
+            self.assertTrue(os.access(init_script, os.X_OK))
+
     def test_verify_and_doctor_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
@@ -96,6 +355,15 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("Harness is not fully installed", doctor_before.stdout)
 
             self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            verify_unfilled_repo = self.run_cli("verify", "--repo", str(repo))
+            self.assertEqual(verify_unfilled_repo.returncode, 1)
+            self.assertIn("still need project-specific content", verify_unfilled_repo.stdout)
+
+            doctor_unfilled_repo = self.run_cli("doctor", "--repo", str(repo))
+            self.assertEqual(doctor_unfilled_repo.returncode, 0)
+            self.assertIn("still need project-specific content", doctor_unfilled_repo.stdout)
+
+            self.fill_repo_harness(repo)
             self.assertEqual(
                 self.run_cli(
                     "task",
@@ -111,20 +379,130 @@ class AwhCliTests(unittest.TestCase):
 
             verify_repo = self.run_cli("verify", "--repo", str(repo))
             self.assertEqual(verify_repo.returncode, 0)
-            self.assertIn("Repository passed required file checks", verify_repo.stdout)
+            self.assertIn("Repository passed readiness checks", verify_repo.stdout)
 
             verify_task = self.run_cli("verify", "--repo", str(repo), "--task", "bootstrap-api")
+            self.assertEqual(verify_task.returncode, 1)
+            self.assertIn("is not ready yet", verify_task.stdout)
+
+            doctor_after_task_create = self.run_cli("doctor", "--repo", str(repo))
+            self.assertEqual(doctor_after_task_create.returncode, 0)
+            self.assertIn("not verification-ready yet", doctor_after_task_create.stdout)
+
+            self.fill_task_harness(repo, "bootstrap-api")
+            verify_task = self.run_cli("verify", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(verify_task.returncode, 0)
-            self.assertIn("passed required file checks", verify_task.stdout)
+            self.assertIn("passed readiness checks", verify_task.stdout)
 
             doctor_after = self.run_cli("doctor", "--repo", str(repo))
             self.assertEqual(doctor_after.returncode, 0)
             self.assertIn("no evaluator artifacts", doctor_after.stdout)
 
+    def test_verify_rejects_invalid_long_running_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "broken",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "general",
+                    "--long-running",
+                ).returncode,
+                0,
+            )
+            self.fill_task_harness(repo, "broken")
+
+            (repo / "docs" / "tasks" / "broken" / "feature_list.json").write_text("{not-json}\n", encoding="utf-8")
+            result = self.run_cli("verify", "--repo", str(repo), "--task", "broken")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("feature_list.json", result.stdout)
+            self.assertIn("invalid JSON", result.stdout)
+
+            self.fill_long_running_harness(repo, "broken")
+            (repo / "docs" / "tasks" / "broken" / "evidence" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "artifacts": [
+                            {
+                                "id": "evidence-001",
+                                "kind": "unknown",
+                                "location": "logs/output.txt",
+                                "summary": "bad enum",
+                                "status": "planned",
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result = self.run_cli("verify", "--repo", str(repo), "--task", "broken")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("manifest.json", result.stdout)
+            self.assertIn("invalid `kind`", result.stdout)
+
+    def test_doctor_recommends_long_running_for_plan_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "planner-task",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "backend",
+                    "--plan",
+                ).returncode,
+                0,
+            )
+            self.fill_task_harness(repo, "planner-task")
+
+            doctor = self.run_cli("doctor", "--repo", str(repo))
+            self.assertEqual(doctor.returncode, 0)
+            self.assertIn("awh task augment planner-task --long-running", doctor.stdout)
+
+    def test_doctor_points_to_long_running_repairs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "repair-me",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "general",
+                    "--long-running",
+                ).returncode,
+                0,
+            )
+            self.fill_task_harness(repo, "repair-me")
+            (repo / "docs" / "tasks" / "repair-me" / "feature_list.json").write_text("{bad-json}\n", encoding="utf-8")
+
+            doctor = self.run_cli("doctor", "--repo", str(repo))
+            self.assertEqual(doctor.returncode, 0)
+            self.assertIn("feature_list.json", doctor.stdout)
+            self.assertIn("repair the long-running task state files", doctor.stdout)
+
     def test_export_commands_generate_expected_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
             self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
             self.assertEqual(
                 self.run_cli(
                     "task",
@@ -141,6 +519,7 @@ class AwhCliTests(unittest.TestCase):
                 ).returncode,
                 0,
             )
+            self.fill_task_harness(repo, "bootstrap-api")
 
             claude_repo = self.run_cli("export", "claude", "--repo", str(repo))
             self.assertEqual(claude_repo.returncode, 0, claude_repo.stdout + claude_repo.stderr)
@@ -174,16 +553,68 @@ class AwhCliTests(unittest.TestCase):
             self.assertEqual(copilot_task.returncode, 0, copilot_task.stdout + copilot_task.stderr)
             copilot_task_file = repo / ".github" / "instructions" / "bootstrap-api.instructions.md"
             self.assertTrue(copilot_task_file.exists())
-            self.assertIn('applyTo: "**"', copilot_task_file.read_text(encoding="utf-8"))
+            self.assertIn('applyTo: "src/awh/**,tests/**"', copilot_task_file.read_text(encoding="utf-8"))
 
             generic_task = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "bootstrap-api")
             self.assertEqual(generic_task.returncode, 0, generic_task.stdout + generic_task.stderr)
             self.assertTrue((repo / "docs" / "exports" / "generic" / "bootstrap-api.json").exists())
 
+    def test_long_running_exports_include_structured_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "long-export",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "backend",
+                    "--plan",
+                    "--long-running",
+                ).returncode,
+                0,
+            )
+            self.fill_task_harness(repo, "long-export")
+            self.fill_long_running_harness(repo, "long-export")
+
+            codex_task = self.run_cli("export", "codex", "--repo", str(repo), "--task", "long-export")
+            self.assertEqual(codex_task.returncode, 0, codex_task.stdout + codex_task.stderr)
+            codex_text = (repo / "docs" / "exports" / "codex" / "long-export.md").read_text(encoding="utf-8")
+            self.assertIn("## Long-Running State", codex_text)
+            self.assertIn("docs/tasks/long-export/feature_list.json", codex_text)
+            self.assertIn("feature counts:", codex_text)
+            self.assertIn("progress next step: step: wire parsed feature counts into the Codex task packet", codex_text)
+
+            claude_task = self.run_cli("export", "claude", "--repo", str(repo), "--task", "long-export")
+            self.assertEqual(claude_task.returncode, 0, claude_task.stdout + claude_task.stderr)
+            claude_text = (repo / ".claude" / "agents" / "long-export-coordinator.md").read_text(encoding="utf-8")
+            self.assertIn("docs/tasks/long-export/feature_list.json", claude_text)
+            self.assertIn("docs/tasks/long-export/progress.md", claude_text)
+
+            copilot_task = self.run_cli("export", "copilot", "--repo", str(repo), "--task", "long-export")
+            self.assertEqual(copilot_task.returncode, 0, copilot_task.stdout + copilot_task.stderr)
+            copilot_text = (repo / ".github" / "instructions" / "long-export.instructions.md").read_text(encoding="utf-8")
+            self.assertIn("docs/tasks/long-export/progress.md", copilot_text)
+            self.assertIn("docs/tasks/long-export/evidence/manifest.json", copilot_text)
+
+            generic_task = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "long-export")
+            self.assertEqual(generic_task.returncode, 0, generic_task.stdout + generic_task.stderr)
+            generic_payload = json.loads(
+                (repo / "docs" / "exports" / "generic" / "long-export.json").read_text(encoding="utf-8")
+            )
+            self.assertIn("structured", generic_payload)
+            self.assertEqual(generic_payload["structured"]["feature_list"]["task_slug"], "long-export")
+            self.assertEqual(generic_payload["structured"]["evidence_manifest"]["artifacts"][0]["id"], "evidence-001")
+
     def test_export_parses_multiline_contract_and_role_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
             self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
             self.assertEqual(
                 self.run_cli(
                     "task",
@@ -197,11 +628,21 @@ class AwhCliTests(unittest.TestCase):
                 ).returncode,
                 0,
             )
+            self.fill_task_harness(repo, "demo")
 
             (repo / "docs" / "tasks" / "demo" / "contract.md").write_text(
                 "\n".join(
                     [
                         "# Task Contract",
+                        "",
+                        "## Task",
+                        "",
+                        "- 이름: demo",
+                        "- 요청: parse multiline fields",
+                        "",
+                        "## Goal",
+                        "",
+                        "- 이 작업이 끝났을 때 반드시 참이어야 하는 상태: multiline parsing remains stable",
                         "",
                         "## Mutable Surface",
                         "",
@@ -210,6 +651,7 @@ class AwhCliTests(unittest.TestCase):
                         "  - tests/api/**",
                         "- 수정 금지 파일:",
                         "  - docs/**",
+                        "- 검증에 사용할 명령: `PYTHONPATH=src python3 -m unittest discover -s tests -v`",
                         "",
                     ]
                 ),
@@ -254,8 +696,58 @@ class AwhCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
             self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
 
             result = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "missing-task")
             self.assertEqual(result.returncode, 1)
             self.assertIn("Task `missing-task` is not ready for export", result.stdout)
             self.assertFalse((repo / "docs" / "exports" / "generic" / "missing-task.json").exists())
+
+    def test_dry_run_and_help_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+
+            init_dry_run = self.run_cli("init", "--repo", str(repo), "--dry-run")
+            self.assertEqual(init_dry_run.returncode, 0, init_dry_run.stdout + init_dry_run.stderr)
+            self.assertIn("would install", init_dry_run.stdout)
+            self.assertIn("Dry run only", init_dry_run.stdout)
+            self.assertFalse((repo / "AGENTS.md").exists())
+
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli("task", "new", "demo", "--repo", str(repo), "--dry-run").returncode,
+                0,
+            )
+            self.assertFalse((repo / "docs" / "tasks" / "demo").exists())
+
+            help_result = self.run_cli("task", "augment", "--help")
+            self.assertEqual(help_result.returncode, 0)
+            self.assertIn("--dry-run", help_result.stdout)
+            self.assertIn("--long-running", help_result.stdout)
+            self.assertIn("--feature-list", help_result.stdout)
+            self.assertIn("--evidence-manifest", help_result.stdout)
+            self.assertNotIn("--only-missing", help_result.stdout)
+
+            new_help = self.run_cli("task", "new", "--help")
+            self.assertEqual(new_help.returncode, 0)
+            self.assertIn("--long-running", new_help.stdout)
+            self.assertIn("--init-script", new_help.stdout)
+
+    def test_shell_new_task_supports_long_running(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            result = subprocess.run(
+                [str(REPO_ROOT / "scripts" / "new-task.sh"), "backend", str(repo), "shell-task", "--with-long-running"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            task_dir = repo / "docs" / "tasks" / "shell-task"
+            self.assertTrue((task_dir / "feature_list.json").exists())
+            self.assertTrue((task_dir / "progress.md").exists())
+            self.assertTrue((task_dir / "init.sh").exists())
+            self.assertTrue((task_dir / "evidence" / "manifest.json").exists())
+            self.assertTrue(os.access(task_dir / "init.sh", os.X_OK))

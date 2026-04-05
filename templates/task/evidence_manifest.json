@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "artifacts": [
+    {
+      "id": "evidence-001",
+      "kind": "automated",
+      "location": "",
+      "summary": "Describe the evidence artifact to collect or review.",
+      "status": "planned"
+    }
+  ]
+}

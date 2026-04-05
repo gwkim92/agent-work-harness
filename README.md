@@ -70,10 +70,14 @@ Common files:
 - `contract.md`
 - `handoff.md`
 - `plan.md`
+- `feature_list.json`
+- `progress.md`
+- `init.sh`
 - `review.md`
 - `qa.md`
 - `roles.md`
 - `topology.md`
+- `evidence/manifest.json`
 - `loop_contract.md`
 
 This means task state accumulates per task instead of overwriting a single shared `docs/contract.md`.
@@ -92,9 +96,15 @@ Then install harness files into a target repository:
 ```bash
 REPO=/absolute/path/to/repo
 
+awh init --profile default --repo "$REPO" --dry-run
 awh init --profile default --repo "$REPO"
 awh task new bootstrap-api --profile backend --repo "$REPO" --plan
+awh task new checkout-hardening --profile backend --repo "$REPO" --plan --long-running
 ```
+
+Then fill the generated repo and task files before relying on `awh verify`.
+`verify` now checks for missing content, not only missing files.
+If `feature_list.json` or `evidence/manifest.json` exist, `verify --task` also validates their JSON structure.
 
 To add missing task artifacts later without overwriting existing files:
 
@@ -102,6 +112,7 @@ To add missing task artifacts later without overwriting existing files:
 REPO=/absolute/path/to/repo
 
 awh task augment bootstrap-api --profile backend --repo "$REPO" --qa
+awh task augment checkout-hardening --profile backend --repo "$REPO" --long-running
 ```
 
 To generate adapter-friendly outputs from canonical harness files:
@@ -125,6 +136,7 @@ REPO=/absolute/path/to/repo
 
 "$KIT/scripts/scaffold.sh" default "$REPO"
 "$KIT/scripts/new-task.sh" backend "$REPO" bootstrap-api --with-plan
+"$KIT/scripts/new-task.sh" backend "$REPO" checkout-hardening --with-plan --with-long-running
 ```
 
 ## Product Direction
@@ -177,6 +189,7 @@ Behavior:
 - preflights all collisions first
 - copies nothing if a collision exists
 - overwrites only with `--force`
+- supports `--dry-run` to preview planned writes
 
 ### Task Creation
 
@@ -191,10 +204,15 @@ Behavior:
 Optional flags:
 
 - `--with-plan`
+- `--with-long-running`
+- `--with-feature-list`
+- `--with-progress`
+- `--with-init-script`
 - `--with-review`
 - `--with-qa`
 - `--with-roles`
 - `--with-topology`
+- `--with-evidence-manifest`
 - `--with-loop-contract`
 - `--only-missing`
 - `--force`
@@ -205,6 +223,7 @@ Example:
 REPO=/absolute/path/to/repo
 
 awh task new checkout-redesign --profile web --repo "$REPO" --plan
+awh task new checkout-redesign --profile web --repo "$REPO" --plan --long-running
 awh task augment migration-audit --profile general --repo "$REPO" --roles --topology
 awh task augment migration-audit --profile general --repo "$REPO" --plan
 ```
@@ -215,6 +234,8 @@ awh task augment migration-audit --profile general --repo "$REPO" --plan
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall src tests
 ```
+
+`awh verify` is intended to be run after filling required placeholders and key task fields.
 
 ## Research Basis
 

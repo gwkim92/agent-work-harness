@@ -8,10 +8,15 @@ Usage:
 
 Flags:
   --with-plan
+  --with-long-running
+  --with-feature-list
+  --with-progress
+  --with-init-script
   --with-review
   --with-qa
   --with-roles
   --with-topology
+  --with-evidence-manifest
   --with-loop-contract
   --only-missing
   --force
@@ -19,6 +24,7 @@ Flags:
 Examples:
   new-task.sh general /path/to/repo feature-x
   new-task.sh web /path/to/repo checkout-redesign --with-plan
+  new-task.sh backend /path/to/repo feature-x --with-long-running
   new-task.sh general /path/to/repo feature-x --with-plan --only-missing
   new-task.sh general /path/to/repo migration-audit --with-roles --with-topology
 EOF
@@ -48,10 +54,15 @@ esac
 
 FORCE=
 WITH_PLAN=0
+WITH_LONG_RUNNING=0
+WITH_FEATURE_LIST=0
+WITH_PROGRESS=0
+WITH_INIT_SCRIPT=0
 WITH_REVIEW=0
 WITH_QA=0
 WITH_ROLES=0
 WITH_TOPOLOGY=0
+WITH_EVIDENCE_MANIFEST=0
 WITH_LOOP=0
 ONLY_MISSING=0
 
@@ -59,6 +70,18 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --with-plan)
       WITH_PLAN=1
+      ;;
+    --with-long-running)
+      WITH_LONG_RUNNING=1
+      ;;
+    --with-feature-list)
+      WITH_FEATURE_LIST=1
+      ;;
+    --with-progress)
+      WITH_PROGRESS=1
+      ;;
+    --with-init-script)
+      WITH_INIT_SCRIPT=1
       ;;
     --with-review)
       WITH_REVIEW=1
@@ -71,6 +94,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --with-topology)
       WITH_TOPOLOGY=1
+      ;;
+    --with-evidence-manifest)
+      WITH_EVIDENCE_MANIFEST=1
       ;;
     --with-loop-contract)
       WITH_LOOP=1
@@ -89,6 +115,13 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+if [ "$WITH_LONG_RUNNING" -eq 1 ]; then
+  WITH_FEATURE_LIST=1
+  WITH_PROGRESS=1
+  WITH_INIT_SCRIPT=1
+  WITH_EVIDENCE_MANIFEST=1
+fi
 
 case "$PROFILE" in
   general)
@@ -131,6 +164,15 @@ plan_task() {
   if [ "$WITH_PLAN" -eq 1 ]; then
     add_copy "$KIT_ROOT/templates/task/plan.md" "$TASK_DIR/plan.md"
   fi
+  if [ "$WITH_FEATURE_LIST" -eq 1 ]; then
+    add_copy "$KIT_ROOT/templates/task/feature_list.json" "$TASK_DIR/feature_list.json"
+  fi
+  if [ "$WITH_PROGRESS" -eq 1 ]; then
+    add_copy "$KIT_ROOT/templates/task/progress.md" "$TASK_DIR/progress.md"
+  fi
+  if [ "$WITH_INIT_SCRIPT" -eq 1 ]; then
+    add_copy "$KIT_ROOT/templates/task/init.sh" "$TASK_DIR/init.sh"
+  fi
   if [ "$WITH_REVIEW" -eq 1 ]; then
     add_copy "$KIT_ROOT/templates/task/review.md" "$TASK_DIR/review.md"
   fi
@@ -142,6 +184,9 @@ plan_task() {
   fi
   if [ "$WITH_TOPOLOGY" -eq 1 ]; then
     add_copy "$KIT_ROOT/templates/task/topology.md" "$TASK_DIR/topology.md"
+  fi
+  if [ "$WITH_EVIDENCE_MANIFEST" -eq 1 ]; then
+    add_copy "$KIT_ROOT/templates/task/evidence_manifest.json" "$TASK_DIR/evidence/manifest.json"
   fi
   if [ "$WITH_LOOP" -eq 1 ]; then
     add_copy "$KIT_ROOT/templates/task/loop_contract.md" "$TASK_DIR/loop_contract.md"
@@ -177,7 +222,7 @@ apply_plan() {
 
   while IFS='	' read -r src dest; do
     mkdir -p "$(dirname "$dest")"
-    cp "$src" "$dest"
+    cp -p "$src" "$dest"
     echo "copied $src -> $dest"
   done < "$EFFECTIVE_PLAN"
 }

@@ -4,8 +4,11 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
-from typing import Iterable
+from typing import Any, Iterable
 import shutil
+
+
+TEMPLATE_PLACEHOLDER_RE = re.compile(r"\[[A-Z0-9_]+\]")
 
 
 REPO_PROFILE_FILES = {
@@ -22,16 +25,32 @@ REPO_PROFILE_FILES = {
     ),
 }
 
-TASK_OPTION_FILES = {
-    "contract": "templates/task/contract.md",
-    "handoff": "templates/task/handoff.md",
-    "plan": "templates/task/plan.md",
-    "review": "templates/task/review.md",
-    "qa": "templates/task/qa.md",
-    "roles": "templates/task/roles.md",
-    "topology": "templates/task/topology.md",
-    "loop_contract": "templates/task/loop_contract.md",
+TASK_OPTION_SPECS = {
+    "contract": ("templates/task/contract.md", "contract.md"),
+    "handoff": ("templates/task/handoff.md", "handoff.md"),
+    "plan": ("templates/task/plan.md", "plan.md"),
+    "feature_list": ("templates/task/feature_list.json", "feature_list.json"),
+    "progress": ("templates/task/progress.md", "progress.md"),
+    "init_script": ("templates/task/init.sh", "init.sh"),
+    "review": ("templates/task/review.md", "review.md"),
+    "qa": ("templates/task/qa.md", "qa.md"),
+    "roles": ("templates/task/roles.md", "roles.md"),
+    "topology": ("templates/task/topology.md", "topology.md"),
+    "evidence_manifest": ("templates/task/evidence_manifest.json", "evidence/manifest.json"),
+    "loop_contract": ("templates/task/loop_contract.md", "loop_contract.md"),
 }
+
+LONG_RUNNING_TASK_OPTIONS = (
+    "feature_list",
+    "progress",
+    "init_script",
+    "evidence_manifest",
+)
+
+FEATURE_STATUS_VALUES = {"todo", "in_progress", "done", "blocked"}
+FEATURE_PRIORITY_VALUES = {"low", "medium", "high"}
+EVIDENCE_KIND_VALUES = {"automated", "manual", "browser", "runtime", "log", "screenshot", "other"}
+EVIDENCE_STATUS_VALUES = {"planned", "collected", "failed"}
 
 TASK_PROFILE_OPTIONS = {
     "general": set(),
@@ -105,7 +124,7 @@ def task_plan(
     root = kit_root()
     task_dir = repo / "docs" / "tasks" / slug
     return [
-        CopyOperation(root / TASK_OPTION_FILES[name], task_dir / f"{name}.md")
+        CopyOperation(root / TASK_OPTION_SPECS[name][0], task_dir / TASK_OPTION_SPECS[name][1])
         for name in _ordered_task_options(options)
     ]
 
@@ -115,10 +134,14 @@ def _ordered_task_options(options: set[str]) -> list[str]:
         "contract",
         "handoff",
         "plan",
+        "feature_list",
+        "progress",
+        "init_script",
         "review",
         "qa",
         "roles",
         "topology",
+        "evidence_manifest",
         "loop_contract",
     ]
     return [name for name in ordered_names if name in options]
@@ -150,7 +173,7 @@ def apply_copy_plan(operations: Iterable[CopyOperation]) -> list[Path]:
     written: list[Path] = []
     for operation in operations:
         operation.destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(operation.source, operation.destination)
+        shutil.copy2(operation.source, operation.destination)
         written.append(operation.destination)
     return written
 
@@ -201,6 +224,77 @@ def verify_task(repo: Path, slug: str) -> list[str]:
     return missing
 
 
+def verify_repo_contents(repo: Path) -> list[str]:
+    issues: list[str] = []
+    agents_text = _read_optional_file(repo / "AGENTS.md")
+    verification_text = _read_optional_file(repo / "docs" / "verification-plan.md")
+
+    if agents_text and TEMPLATE_PLACEHOLDER_RE.search(agents_text):
+        issues.append("Fill placeholder tokens in `AGENTS.md`.")
+
+    if verification_text:
+        automated_commands = _extract_all_labeled_entries(verification_text, "명령", "command")
+        manual_checks = _extract_all_labeled_entries(verification_text, "시나리오", "scenario")
+        runtime_checks = _extract_all_labeled_entries(
+            verification_text,
+            "URL, route, job, endpoint",
+            "browser or runtime checks",
+        )
+        if not automated_commands:
+            issues.append("Add at least one automated check command to `docs/verification-plan.md`.")
+        if not manual_checks and not runtime_checks:
+            issues.append(
+                "Add at least one manual scenario or browser/runtime check to `docs/verification-plan.md`."
+            )
+
+    return issues
+
+
+def verify_task_contents(repo: Path, slug: str) -> list[str]:
+    validate_task_slug(slug)
+    task_dir = repo / "docs" / "tasks" / slug
+    contract = _read_optional_file(task_dir / "contract.md")
+    handoff = _read_optional_file(task_dir / "handoff.md")
+    if not contract or not handoff:
+        return []
+
+    issues: list[str] = []
+    if not _extract_all_labeled_entries(contract, "요청", "request"):
+        issues.append(f"Add the task request to `docs/tasks/{slug}/contract.md`.")
+    if not _extract_all_labeled_entries(
+        contract,
+        "이 작업이 끝났을 때 반드시 참이어야 하는 상태",
+        "goal",
+    ):
+        issues.append(f"Add a concrete goal to `docs/tasks/{slug}/contract.md`.")
+    if not _extract_all_labeled_entries(contract, "수정 가능한 파일", "editable files", "mutable surface"):
+        issues.append(f"Define the mutable surface in `docs/tasks/{slug}/contract.md`.")
+    if not _extract_all_labeled_entries(contract, "검증에 사용할 명령", "verification command"):
+        issues.append(f"Add at least one verification command to `docs/tasks/{slug}/contract.md`.")
+    if not (
+        _extract_all_labeled_entries(handoff, "완료", "completed")
+        or _extract_all_labeled_entries(handoff, "진행 중", "in progress")
+    ):
+        issues.append(f"Record the current status in `docs/tasks/{slug}/handoff.md`.")
+    if not _extract_all_labeled_entries(handoff, "다음 세션은 이것부터 시작", "exact next step"):
+        issues.append(f"Add the exact next step to `docs/tasks/{slug}/handoff.md`.")
+    issues.extend(verify_task_long_running_contents(repo, slug))
+    return issues
+
+
+def verify_task_long_running_contents(repo: Path, slug: str) -> list[str]:
+    issues: list[str] = []
+    feature_list_path = task_artifact_path(repo, slug, "feature_list")
+    evidence_manifest_path = task_artifact_path(repo, slug, "evidence_manifest")
+
+    if feature_list_path.exists():
+        issues.extend(_feature_list_validation_errors(feature_list_path))
+    if evidence_manifest_path.exists():
+        issues.extend(_evidence_manifest_validation_errors(evidence_manifest_path))
+
+    return issues
+
+
 def list_task_slugs(repo: Path) -> list[str]:
     tasks_dir = repo / "docs" / "tasks"
     if not tasks_dir.exists():
@@ -213,12 +307,40 @@ def task_missing_evaluators(repo: Path, slug: str) -> bool:
     return not ((task_dir / "review.md").exists() or (task_dir / "qa.md").exists())
 
 
+def task_has_plan(repo: Path, slug: str) -> bool:
+    return task_artifact_path(repo, slug, "plan").exists()
+
+
+def task_artifact_path(repo: Path, slug: str, option_name: str) -> Path:
+    validate_task_slug(slug)
+    if option_name not in TASK_OPTION_SPECS:
+        raise HarnessError(f"Unknown task artifact: {option_name}")
+    return repo / "docs" / "tasks" / slug / TASK_OPTION_SPECS[option_name][1]
+
+
+def present_long_running_artifacts(repo: Path, slug: str) -> list[str]:
+    validate_task_slug(slug)
+    present: list[str] = []
+    for option_name in LONG_RUNNING_TASK_OPTIONS:
+        artifact_path = task_artifact_path(repo, slug, option_name)
+        if artifact_path.exists():
+            present.append(str(artifact_path.relative_to(repo)))
+    return present
+
+
 def doctor_notes(repo: Path) -> list[str]:
     notes: list[str] = []
     missing_repo = verify_repo(repo)
     if missing_repo:
         notes.append("Harness is not fully installed. Run `awh init --profile default`.")
         notes.append("Missing repo files: " + ", ".join(missing_repo))
+        return notes
+
+    repo_issues = verify_repo_contents(repo)
+    if repo_issues:
+        notes.append("Repo-level harness files exist, but they still need project-specific content.")
+        notes.extend(repo_issues)
+        notes.append("Next: update `AGENTS.md` and `docs/verification-plan.md`, then run `awh verify`.")
         return notes
 
     task_slugs = list_task_slugs(repo)
@@ -233,6 +355,27 @@ def doctor_notes(repo: Path) -> list[str]:
         if task_missing:
             notes.append(f"Task `{slug}` is incomplete: missing {', '.join(task_missing)}.")
             continue
+        long_running_notes = doctor_task_long_running_notes(repo, slug)
+        task_issues = verify_task_contents(repo, slug)
+        if task_issues:
+            notes.append(f"Task `{slug}` exists but is not verification-ready yet.")
+            notes.extend(task_issues)
+            for note in long_running_notes:
+                if note not in task_issues:
+                    notes.append(note)
+            if _has_non_long_running_task_issues(task_issues, slug):
+                notes.append(f"Next: finish `docs/tasks/{slug}/contract.md` and `handoff.md`.")
+            else:
+                notes.append(f"Next: repair the long-running task state files under `docs/tasks/{slug}/`.")
+            continue
+        if task_has_plan(repo, slug) and not present_long_running_artifacts(repo, slug):
+            notes.append(
+                f"Task `{slug}` has a plan but no long-running support yet. "
+                f"Consider `awh task augment {slug} --long-running`."
+            )
+        if long_running_notes:
+            notes.append(f"Task `{slug}` has long-running artifacts that still need attention.")
+            notes.extend(long_running_notes)
         if task_missing_evaluators(repo, slug):
             notes.append(
                 f"Task `{slug}` has no evaluator artifacts yet. Consider "
@@ -264,6 +407,7 @@ def export_plan(target: str, repo: Path, task_slug: str | None = None) -> list[W
 def build_claude_export(repo: Path, task_slug: str | None = None) -> list[WriteOperation]:
     _require_repo_harness(repo)
     if task_slug:
+        _require_task_long_running_export_state(repo, task_slug)
         return _claude_task_exports(repo, task_slug)
     return [
         WriteOperation(
@@ -276,10 +420,7 @@ def build_claude_export(repo: Path, task_slug: str | None = None) -> list[WriteO
 def build_codex_export(repo: Path, task_slug: str | None = None) -> list[WriteOperation]:
     _require_repo_harness(repo)
     if task_slug:
-        validate_task_slug(task_slug)
-        missing = verify_task(repo, task_slug)
-        if missing:
-            raise HarnessError(f"Task `{task_slug}` is not ready for export: missing {', '.join(missing)}")
+        _require_task_long_running_export_state(repo, task_slug)
         return [
             WriteOperation(
                 destination=repo / "docs" / "exports" / "codex" / f"{task_slug}.md",
@@ -306,10 +447,7 @@ def build_copilot_export(repo: Path) -> list[WriteOperation]:
 
 def build_copilot_task_export(repo: Path, task_slug: str) -> list[WriteOperation]:
     _require_repo_harness(repo)
-    validate_task_slug(task_slug)
-    missing = verify_task(repo, task_slug)
-    if missing:
-        raise HarnessError(f"Task `{task_slug}` is not ready for export: missing {', '.join(missing)}")
+    _require_task_long_running_export_state(repo, task_slug)
     return [
         WriteOperation(
             destination=repo / ".github" / "instructions" / f"{task_slug}.instructions.md",
@@ -321,14 +459,12 @@ def build_copilot_task_export(repo: Path, task_slug: str) -> list[WriteOperation
 def build_generic_json_export(repo: Path, task_slug: str | None = None) -> list[WriteOperation]:
     _require_repo_harness(repo)
     if task_slug:
-        validate_task_slug(task_slug)
-        missing = verify_task(repo, task_slug)
-        if missing:
-            raise HarnessError(f"Task `{task_slug}` is not ready for export: missing {', '.join(missing)}")
+        _require_task_long_running_export_state(repo, task_slug)
         payload = {
             "kind": "task",
             "task_slug": task_slug,
             "files": _task_file_payload(repo, task_slug),
+            "structured": _task_structured_payload(repo, task_slug),
         }
         destination = repo / "docs" / "exports" / "generic" / f"{task_slug}.json"
     else:
@@ -356,6 +492,16 @@ def _require_repo_harness(repo: Path) -> None:
         raise HarnessError(
             "Repository is missing required harness files for export: " + ", ".join(missing)
         )
+
+
+def _require_task_long_running_export_state(repo: Path, task_slug: str) -> None:
+    validate_task_slug(task_slug)
+    missing = verify_task(repo, task_slug)
+    if missing:
+        raise HarnessError(f"Task `{task_slug}` is not ready for export: missing {', '.join(missing)}")
+    issues = verify_task_long_running_contents(repo, task_slug)
+    if issues:
+        raise HarnessError(f"Task `{task_slug}` has invalid long-running artifacts: {'; '.join(issues)}")
 
 
 def _claude_repo_content(repo: Path) -> str:
@@ -490,6 +636,7 @@ def _codex_task_content(repo: Path, task_slug: str) -> str:
     goal = _extract_first_labeled_value(contract, "이 작업이 끝났을 때 반드시 참이어야 하는 상태")
     next_step = _extract_first_labeled_value(handoff, "다음 세션은 이것부터 시작")
     completed = _extract_first_labeled_value(handoff, "완료")
+    long_running_lines = _codex_long_running_lines(repo, task_slug)
     return "\n".join(
         [
             f"# Codex Task Packet: {task_slug}",
@@ -510,6 +657,10 @@ def _codex_task_content(repo: Path, task_slug: str) -> str:
             f"- mutable surface: {mutable_surface or '_Use the contract mutable surface section._'}",
             f"- completed status: {completed or '_See handoff.md._'}",
             f"- next step: {next_step or '_See handoff.md._'}",
+            "",
+            "## Long-Running State",
+            "",
+            *long_running_lines,
             "",
             "## Contract",
             "",
@@ -566,6 +717,7 @@ def _copilot_repo_content(repo: Path) -> str:
 def _copilot_task_content(repo: Path, task_slug: str) -> str:
     contract = _read_file(repo / "docs" / "tasks" / task_slug / "contract.md")
     apply_to = _copilot_apply_to_patterns(contract)
+    long_running_guidance = _copilot_long_running_lines(repo, task_slug)
     return "\n".join(
         [
             "---",
@@ -579,6 +731,7 @@ def _copilot_task_content(repo: Path, task_slug: str) -> str:
             "",
             f"- Stay inside `docs/tasks/{task_slug}/contract.md` scope and mutable surface.",
             f"- Use `docs/tasks/{task_slug}/plan.md` if it exists before making large edits.",
+            *long_running_guidance,
             f"- Update `docs/tasks/{task_slug}/review.md` and `qa.md` instead of inventing new evaluation standards.",
             f"- Refresh `docs/tasks/{task_slug}/handoff.md` before stopping work.",
             "",
@@ -592,11 +745,27 @@ def _task_file_payload(repo: Path, task_slug: str) -> dict[str, str | None]:
         "contract.md": _read_optional_file(task_dir / "contract.md"),
         "handoff.md": _read_optional_file(task_dir / "handoff.md"),
         "plan.md": _read_optional_file(task_dir / "plan.md"),
+        "feature_list.json": _read_optional_file(task_dir / "feature_list.json"),
+        "progress.md": _read_optional_file(task_dir / "progress.md"),
+        "init.sh": _read_optional_file(task_dir / "init.sh"),
         "review.md": _read_optional_file(task_dir / "review.md"),
         "qa.md": _read_optional_file(task_dir / "qa.md"),
         "roles.md": _read_optional_file(task_dir / "roles.md"),
         "topology.md": _read_optional_file(task_dir / "topology.md"),
+        "evidence/manifest.json": _read_optional_file(task_dir / "evidence" / "manifest.json"),
     }
+
+
+def _task_structured_payload(repo: Path, task_slug: str) -> dict[str, Any]:
+    task_dir = repo / "docs" / "tasks" / task_slug
+    structured: dict[str, Any] = {}
+    feature_list_path = task_dir / "feature_list.json"
+    evidence_manifest_path = task_dir / "evidence" / "manifest.json"
+    if feature_list_path.exists():
+        structured["feature_list"] = _load_feature_list(feature_list_path)
+    if evidence_manifest_path.exists():
+        structured["evidence_manifest"] = _load_evidence_manifest(evidence_manifest_path)
+    return structured
 
 
 def _read_file(path: Path) -> str:
@@ -621,14 +790,26 @@ def _extract_first_labeled_value(text: str, *labels: str) -> str | None:
         key, value = body.split(":", 1)
         if key.strip().lower() in normalized_labels:
             cleaned = value.strip()
-            if cleaned:
+            if cleaned and not _is_template_placeholder(cleaned):
                 return cleaned
     return None
 
 
 def _extract_labeled_items(text: str, *labels: str) -> list[str]:
+    groups = _collect_labeled_item_groups(text, *labels)
+    if not groups:
+        return []
+    return groups[0]
+
+
+def _extract_all_labeled_entries(text: str, *labels: str) -> list[str]:
+    return ["; ".join(group) for group in _collect_labeled_item_groups(text, *labels)]
+
+
+def _collect_labeled_item_groups(text: str, *labels: str) -> list[list[str]]:
     normalized_labels = {label.strip().lower() for label in labels}
     lines = text.splitlines()
+    groups: list[list[str]] = []
     for index, raw_line in enumerate(lines):
         match = re.match(r"^(\s*)-\s+([^:]+):(.*)$", raw_line)
         if not match:
@@ -639,7 +820,7 @@ def _extract_labeled_items(text: str, *labels: str) -> list[str]:
         base_indent = len(match.group(1))
         items: list[str] = []
         inline_value = _normalize_extracted_item(match.group(3))
-        if inline_value:
+        if inline_value and not _is_template_placeholder(inline_value):
             items.append(inline_value)
 
         for next_line in lines[index + 1 :]:
@@ -650,10 +831,11 @@ def _extract_labeled_items(text: str, *labels: str) -> list[str]:
                 break
 
             normalized = _normalize_extracted_item(next_line)
-            if normalized:
+            if normalized and not _is_template_placeholder(normalized):
                 items.append(normalized)
-        return items
-    return []
+        if items:
+            groups.append(items)
+    return groups
 
 
 def _extract_labeled_text(text: str, *labels: str) -> str | None:
@@ -670,6 +852,10 @@ def _normalize_extracted_item(value: str) -> str:
     if cleaned.startswith("- "):
         cleaned = cleaned[2:].strip()
     return cleaned.replace("`", "").strip()
+
+
+def _is_template_placeholder(value: str) -> bool:
+    return bool(TEMPLATE_PLACEHOLDER_RE.fullmatch(value.strip()))
 
 
 def _parse_roles(text: str | None) -> list[dict[str, str]]:
@@ -725,6 +911,7 @@ def _claude_coordinator_body(repo: Path, task_slug: str) -> str:
     task_dir = repo / "docs" / "tasks" / task_slug
     topology = _read_optional_file(task_dir / "topology.md")
     plan = _read_optional_file(task_dir / "plan.md")
+    long_running_lines = _claude_long_running_lines(repo, task_slug)
     return "\n".join(
         [
             f"You coordinate the task `{task_slug}`.",
@@ -735,6 +922,7 @@ def _claude_coordinator_body(repo: Path, task_slug: str) -> str:
             f"- `docs/tasks/{task_slug}/plan.md` when present",
             f"- `docs/tasks/{task_slug}/roles.md` when present",
             f"- `docs/tasks/{task_slug}/topology.md` when present",
+            *long_running_lines,
             "",
             "Your job:",
             "- keep work aligned to the contract",
@@ -837,3 +1025,235 @@ def _copilot_apply_to_patterns(contract_text: str) -> str:
             seen.add(candidate)
             candidates.append(candidate)
     return ",".join(candidates) if candidates else "**"
+
+
+def _has_non_long_running_task_issues(issues: list[str], slug: str) -> bool:
+    long_running_markers = (
+        f"docs/tasks/{slug}/feature_list.json",
+        f"docs/tasks/{slug}/progress.md",
+        f"docs/tasks/{slug}/evidence/manifest.json",
+    )
+    return any(not any(marker in issue for marker in long_running_markers) for issue in issues)
+
+
+def doctor_task_long_running_notes(repo: Path, slug: str) -> list[str]:
+    notes: list[str] = []
+    feature_list_path = task_artifact_path(repo, slug, "feature_list")
+    evidence_manifest_path = task_artifact_path(repo, slug, "evidence_manifest")
+    progress_path = task_artifact_path(repo, slug, "progress")
+
+    if feature_list_path.exists():
+        feature_errors = _feature_list_validation_errors(feature_list_path)
+        if feature_errors:
+            notes.extend(feature_errors)
+        else:
+            feature_list = _load_feature_list(feature_list_path)
+            if not feature_list["features"]:
+                notes.append(
+                    f"`docs/tasks/{slug}/feature_list.json` is still empty. "
+                    f"Next: add at least one tracked feature."
+                )
+
+    if evidence_manifest_path.exists():
+        evidence_errors = _evidence_manifest_validation_errors(evidence_manifest_path)
+        if evidence_errors:
+            notes.extend(evidence_errors)
+        else:
+            evidence_manifest = _load_evidence_manifest(evidence_manifest_path)
+            if not evidence_manifest["artifacts"]:
+                notes.append(
+                    f"`docs/tasks/{slug}/evidence/manifest.json` is still empty. "
+                    f"Next: add at least one planned or collected evidence artifact."
+                )
+
+    progress_text = _read_optional_file(progress_path)
+    if progress_text and not _progress_exact_next_step(progress_text):
+        notes.append(
+            f"`docs/tasks/{slug}/progress.md` is present but missing an exact next step. "
+            f"Next: update the `Exact Next Step` section."
+        )
+
+    return notes
+
+
+def _feature_list_validation_errors(path: Path) -> list[str]:
+    try:
+        payload = _load_json_file(path)
+    except HarnessError as exc:
+        return [str(exc)]
+
+    issues: list[str] = []
+    if not isinstance(payload, dict):
+        return [f"`{path}` must contain a JSON object."]
+    if payload.get("version") != 1:
+        issues.append(f"`{path}` must set `version` to `1`.")
+    if not isinstance(payload.get("task_slug"), str):
+        issues.append(f"`{path}` must set `task_slug` to a string.")
+    features = payload.get("features")
+    if not isinstance(features, list):
+        issues.append(f"`{path}` must set `features` to an array.")
+        return issues
+    for index, feature in enumerate(features):
+        prefix = f"`{path}` feature #{index + 1}"
+        if not isinstance(feature, dict):
+            issues.append(f"{prefix} must be an object.")
+            continue
+        missing_keys = {"id", "description", "status", "priority", "notes", "evidence_refs"} - set(feature)
+        if missing_keys:
+            issues.append(f"{prefix} is missing keys: {', '.join(sorted(missing_keys))}.")
+            continue
+        if feature["status"] not in FEATURE_STATUS_VALUES:
+            issues.append(
+                f"{prefix} has invalid `status` `{feature['status']}`. "
+                f"Use one of: {', '.join(sorted(FEATURE_STATUS_VALUES))}."
+            )
+        if feature["priority"] not in FEATURE_PRIORITY_VALUES:
+            issues.append(
+                f"{prefix} has invalid `priority` `{feature['priority']}`. "
+                f"Use one of: {', '.join(sorted(FEATURE_PRIORITY_VALUES))}."
+            )
+        if not isinstance(feature["id"], str):
+            issues.append(f"{prefix} must set `id` to a string.")
+        if not isinstance(feature["description"], str):
+            issues.append(f"{prefix} must set `description` to a string.")
+        if not isinstance(feature["notes"], str):
+            issues.append(f"{prefix} must set `notes` to a string.")
+        if not isinstance(feature["evidence_refs"], list) or not all(
+            isinstance(ref, str) for ref in feature["evidence_refs"]
+        ):
+            issues.append(f"{prefix} must set `evidence_refs` to an array of strings.")
+    return issues
+
+
+def _evidence_manifest_validation_errors(path: Path) -> list[str]:
+    try:
+        payload = _load_json_file(path)
+    except HarnessError as exc:
+        return [str(exc)]
+
+    issues: list[str] = []
+    if not isinstance(payload, dict):
+        return [f"`{path}` must contain a JSON object."]
+    if payload.get("version") != 1:
+        issues.append(f"`{path}` must set `version` to `1`.")
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list):
+        issues.append(f"`{path}` must set `artifacts` to an array.")
+        return issues
+    for index, artifact in enumerate(artifacts):
+        prefix = f"`{path}` artifact #{index + 1}"
+        if not isinstance(artifact, dict):
+            issues.append(f"{prefix} must be an object.")
+            continue
+        missing_keys = {"id", "kind", "location", "summary", "status"} - set(artifact)
+        if missing_keys:
+            issues.append(f"{prefix} is missing keys: {', '.join(sorted(missing_keys))}.")
+            continue
+        if artifact["kind"] not in EVIDENCE_KIND_VALUES:
+            issues.append(
+                f"{prefix} has invalid `kind` `{artifact['kind']}`. "
+                f"Use one of: {', '.join(sorted(EVIDENCE_KIND_VALUES))}."
+            )
+        if artifact["status"] not in EVIDENCE_STATUS_VALUES:
+            issues.append(
+                f"{prefix} has invalid `status` `{artifact['status']}`. "
+                f"Use one of: {', '.join(sorted(EVIDENCE_STATUS_VALUES))}."
+            )
+        if not isinstance(artifact["id"], str):
+            issues.append(f"{prefix} must set `id` to a string.")
+        if not isinstance(artifact["location"], str):
+            issues.append(f"{prefix} must set `location` to a string.")
+        if not isinstance(artifact["summary"], str):
+            issues.append(f"{prefix} must set `summary` to a string.")
+    return issues
+
+
+def _load_json_file(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HarnessError(f"`{path}` contains invalid JSON: {exc.msg}.") from exc
+
+
+def _load_feature_list(path: Path) -> dict[str, Any]:
+    payload = _load_json_file(path)
+    if not isinstance(payload, dict):
+        raise HarnessError(f"`{path}` must contain a JSON object.")
+    return payload
+
+
+def _load_evidence_manifest(path: Path) -> dict[str, Any]:
+    payload = _load_json_file(path)
+    if not isinstance(payload, dict):
+        raise HarnessError(f"`{path}` must contain a JSON object.")
+    return payload
+
+
+def _progress_exact_next_step(text: str) -> str | None:
+    for line in _section_body_lines(text, "Exact Next Step"):
+        normalized = _normalize_extracted_item(line)
+        if normalized:
+            return normalized
+    return None
+
+
+def _section_body_lines(text: str, heading: str) -> list[str]:
+    lines = text.splitlines()
+    start: int | None = None
+    for index, line in enumerate(lines):
+        if line.strip() == f"## {heading}":
+            start = index + 1
+            break
+    if start is None:
+        return []
+
+    body: list[str] = []
+    for line in lines[start:]:
+        if re.match(r"^\s*##\s+", line):
+            break
+        body.append(line)
+    return body
+
+
+def _codex_long_running_lines(repo: Path, task_slug: str) -> list[str]:
+    lines: list[str] = []
+    present = present_long_running_artifacts(repo, task_slug)
+    if not present:
+        return ["_Not present._"]
+
+    for relative_path in present:
+        lines.append(f"- artifact: `{relative_path}`")
+
+    feature_list_path = task_artifact_path(repo, task_slug, "feature_list")
+    if feature_list_path.exists():
+        feature_list = _load_feature_list(feature_list_path)
+        features = feature_list.get("features", [])
+        if features:
+            counts = {status: 0 for status in sorted(FEATURE_STATUS_VALUES)}
+            for feature in features:
+                if isinstance(feature, dict) and feature.get("status") in counts:
+                    counts[feature["status"]] += 1
+            lines.append(
+                "- feature counts: "
+                + ", ".join(f"{status}={counts[status]}" for status in sorted(counts))
+            )
+        else:
+            lines.append("- feature counts: no tracked features yet")
+
+    progress_text = _read_optional_file(task_artifact_path(repo, task_slug, "progress"))
+    if progress_text:
+        lines.append(f"- progress next step: {_progress_exact_next_step(progress_text) or '_See progress.md._'}")
+
+    return lines
+
+
+def _claude_long_running_lines(repo: Path, task_slug: str) -> list[str]:
+    present = present_long_running_artifacts(repo, task_slug)
+    if not present:
+        return []
+    return [f"- `{relative_path}` when present" for relative_path in present]
+
+
+def _copilot_long_running_lines(repo: Path, task_slug: str) -> list[str]:
+    present = present_long_running_artifacts(repo, task_slug)
+    return [f"- Read `{relative_path}` when it exists before resuming long-running work." for relative_path in present]

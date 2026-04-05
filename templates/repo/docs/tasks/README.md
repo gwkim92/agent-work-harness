@@ -9,10 +9,14 @@ docs/tasks/<task-slug>/
   contract.md
   handoff.md
   plan.md
+  feature_list.json
+  progress.md
+  init.sh
   review.md
   qa.md
   roles.md
   topology.md
+  evidence/manifest.json
   loop_contract.md
 ```
 
@@ -26,12 +30,18 @@ docs/tasks/<task-slug>/
 필요할 때 추가:
 
 - `plan.md`
+- `feature_list.json`
+- `progress.md`
+- `init.sh`
 - `review.md`
 - `qa.md`
 - `roles.md`
 - `topology.md`
+- `evidence/manifest.json`
 - `loop_contract.md`
 
 새 작업 디렉터리는 `scripts/new-task.sh`로 생성하는 것을 권한다.
 
-이미 존재하는 task에 plan, review, qa 같은 문서를 나중에 추가하려면 `--only-missing`을 사용한다.
+장기 작업에는 `feature_list.json`, `progress.md`, `init.sh`, `evidence/manifest.json`을 함께 두는 편이 좋다.
+
+이미 존재하는 task에 plan, review, qa, long-running 문서를 나중에 추가하려면 `--only-missing` 또는 `awh task augment <slug> --long-running`을 사용한다.

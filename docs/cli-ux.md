@@ -46,6 +46,7 @@ Expected behavior:
 - detects repository root
 - preflights collisions
 - writes nothing on conflict unless `--force`
+- supports `--dry-run` for previewing planned writes
 - prints exactly which files were installed
 
 ### `awh task new <slug>`
@@ -57,12 +58,15 @@ Examples:
 ```bash
 awh task new bootstrap-api --profile backend
 awh task new checkout-redesign --profile web --plan
+awh task new checkout-redesign --profile web --plan --long-running
 ```
 
 Expected behavior:
 
 - creates `docs/tasks/<slug>/`
 - installs profile-appropriate files
+- can add optional long-running state files with `--long-running` or per-file flags
+- supports `--dry-run` for previewing planned writes
 - prints next suggested steps
 
 ### `awh task augment <slug>`
@@ -74,11 +78,14 @@ Examples:
 ```bash
 awh task augment bootstrap-api --qa
 awh task augment migration-audit --plan --roles --topology
+awh task augment migration-audit --long-running
 ```
 
 Expected behavior:
 
 - adds only missing files by default
+- supports additive long-running state scaffolds without changing the task profile
+- supports `--dry-run` for previewing planned writes
 - does not overwrite existing task artifacts unless `--force`
 
 ### `awh verify`
@@ -95,7 +102,9 @@ awh verify --task bootstrap-api
 Expected behavior:
 
 - validates required repo files
-- validates task directory completeness
+- validates that repo-level files are filled enough to be usable
+- validates that task directories are both complete and meaningfully filled
+- validates optional long-running JSON files when they are present
 - prints gaps without editing files
 
 ### `awh doctor`
@@ -105,8 +114,9 @@ Explain what is missing and what to do next.
 Expected behavior:
 
 - detects repository maturity
-- recommends next harness level
+- recommends the next concrete command or document to edit
 - suggests missing verification or evaluator artifacts
+- suggests long-running scaffolds for planned tasks that need session state
 
 ### `awh upgrade`
 
@@ -117,6 +127,7 @@ Expected behavior:
 - shows diff targets first
 - supports `--only-missing`
 - supports `--force`
+- should support `--dry-run`
 - prefers non-destructive updates
 
 ## User Flows
@@ -125,7 +136,7 @@ Expected behavior:
 
 ```bash
 awh init --profile default
-awh task new bootstrap-api --profile backend --plan
+awh task new bootstrap-api --profile backend --plan --long-running
 ```
 
 ### Existing Repository
@@ -134,7 +145,7 @@ awh task new bootstrap-api --profile backend --plan
 cd existing-repo
 awh init --profile default
 awh task new add-billing --profile backend
-awh task augment add-billing --qa --plan
+awh task augment add-billing --qa --plan --long-running
 ```
 
 ## UX Rules
@@ -142,7 +153,9 @@ awh task augment add-billing --qa --plan
 - always show planned writes before mutating
 - never overwrite without explicit confirmation or `--force`
 - treat missing repo root as an actionable error
-- prefer `--only-missing` behavior for existing tasks
+- default `task augment` to only-missing behavior
+- treat blank scaffolds as incomplete in `verify`
+- keep markdown canonical while allowing structured long-running companion files
 - recommend the next command after every successful write
 
 ## Non-Goals
