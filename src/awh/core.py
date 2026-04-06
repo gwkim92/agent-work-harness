@@ -608,6 +608,9 @@ def _require_repo_harness(repo: Path) -> None:
         raise HarnessError(
             "Repository is missing required harness files for export: " + ", ".join(missing)
         )
+    issues = verify_repo_contents(repo)
+    if issues:
+        raise HarnessError("Repository is not ready for export: " + "; ".join(issues))
 
 
 def _require_task_long_running_export_state(repo: Path, task_slug: str) -> None:
@@ -615,9 +618,9 @@ def _require_task_long_running_export_state(repo: Path, task_slug: str) -> None:
     missing = verify_task(repo, task_slug)
     if missing:
         raise HarnessError(f"Task `{task_slug}` is not ready for export: missing {', '.join(missing)}")
-    issues = verify_task_long_running_contents(repo, task_slug)
+    issues = verify_task_contents(repo, task_slug)
     if issues:
-        raise HarnessError(f"Task `{task_slug}` has invalid long-running artifacts: {'; '.join(issues)}")
+        raise HarnessError(f"Task `{task_slug}` is not ready for export: {'; '.join(issues)}")
 
 
 def _claude_repo_content(repo: Path) -> str:
@@ -1012,12 +1015,16 @@ def _recent_evidence_summaries(evidence_manifest: dict[str, Any] | None) -> list
 def _task_multi_agent_policy(repo: Path, task_slug: str) -> dict[str, Any]:
     task_dir = repo / "docs" / "tasks" / task_slug
     contract = _read_file(task_dir / "contract.md")
+    review_text = _read_optional_file(task_dir / "review.md")
+    qa_text = _read_optional_file(task_dir / "qa.md")
     roles_path = task_dir / "roles.md"
     topology_path = task_dir / "topology.md"
     roles_text = _read_optional_file(roles_path)
     topology_text = _read_optional_file(topology_path)
     feature_list_path = task_dir / "feature_list.json"
-    feature_list = _load_feature_list(feature_list_path) if feature_list_path.exists() else None
+    feature_list = None
+    if feature_list_path.exists() and not _feature_list_validation_errors(feature_list_path):
+        feature_list = _load_feature_list(feature_list_path)
 
     mutable_surface_entries = _split_briefing_entries(
         _extract_all_labeled_entries(contract, "수정 가능한 파일", "수정 가능한 범위", "mutable surface")
@@ -1033,12 +1040,12 @@ def _task_multi_agent_policy(repo: Path, task_slug: str) -> dict[str, Any]:
         )
 
     has_plan = task_has_plan(repo, task_slug)
-    evaluator_paths = [task_dir / "review.md", task_dir / "qa.md"]
-    evaluator_count = sum(1 for path in evaluator_paths if path.exists())
+    review_signal = _review_artifact_has_signal(review_text)
+    qa_signal = _qa_artifact_has_signal(qa_text)
 
     signals: list[str] = []
-    if evaluator_count:
-        signals.append("evaluator artifacts already exist")
+    if review_signal or qa_signal:
+        signals.append("evaluator artifacts contain non-template verification notes")
     if len(mutable_surface_entries) >= 2:
         signals.append("mutable surface spans multiple areas")
     if non_done_features >= 2 or total_features >= 3:
@@ -1046,7 +1053,7 @@ def _task_multi_agent_policy(repo: Path, task_slug: str) -> dict[str, Any]:
 
     preferred_pattern = "coordinator + specialists" if len(mutable_surface_entries) >= 2 else "planner -> generator -> evaluator"
     docs_present = roles_path.exists() or topology_path.exists()
-    recommended = has_plan and evaluator_count >= 1 and len(signals) >= 2 and not docs_present
+    recommended = has_plan and (review_signal or qa_signal) and len(signals) >= 2 and not docs_present
 
     issues: list[str] = []
     chosen_pattern: str | None = None
@@ -1215,7 +1222,7 @@ def _join_briefing_items(values: str | list[str] | None, empty: str) -> str:
 def _split_briefing_entries(values: list[str]) -> list[str]:
     entries: list[str] = []
     for raw_value in values:
-        for part in raw_value.split(","):
+        for part in re.split(r"[;,]", raw_value):
             candidate = part.strip()
             if candidate:
                 entries.append(candidate)
@@ -1529,6 +1536,8 @@ def _feature_list_validation_errors(path: Path) -> list[str]:
         issues.append(f"`{path}` must set `version` to `1`.")
     if not isinstance(payload.get("task_slug"), str):
         issues.append(f"`{path}` must set `task_slug` to a string.")
+    elif _is_blank_or_placeholder(payload["task_slug"]):
+        issues.append(f"`{path}` must replace the scaffold `task_slug` placeholder with a real task slug.")
     features = payload.get("features")
     if not isinstance(features, list):
         issues.append(f"`{path}` must set `features` to an array.")
@@ -1554,8 +1563,12 @@ def _feature_list_validation_errors(path: Path) -> list[str]:
             )
         if not isinstance(feature["id"], str):
             issues.append(f"{prefix} must set `id` to a string.")
+        elif _is_blank_or_placeholder(feature["id"]):
+            issues.append(f"{prefix} must set `id` to a non-empty string.")
         if not isinstance(feature["description"], str):
             issues.append(f"{prefix} must set `description` to a string.")
+        elif _is_blank_or_placeholder(feature["description"]):
+            issues.append(f"{prefix} must set `description` to a non-empty string.")
         if not isinstance(feature["notes"], str):
             issues.append(f"{prefix} must set `notes` to a string.")
         if not isinstance(feature["evidence_refs"], list) or not all(
@@ -1601,10 +1614,16 @@ def _evidence_manifest_validation_errors(path: Path) -> list[str]:
             )
         if not isinstance(artifact["id"], str):
             issues.append(f"{prefix} must set `id` to a string.")
+        elif _is_blank_or_placeholder(artifact["id"]):
+            issues.append(f"{prefix} must set `id` to a non-empty string.")
         if not isinstance(artifact["location"], str):
             issues.append(f"{prefix} must set `location` to a string.")
+        elif _is_blank_or_placeholder(artifact["location"]):
+            issues.append(f"{prefix} must set `location` to a non-empty string.")
         if not isinstance(artifact["summary"], str):
             issues.append(f"{prefix} must set `summary` to a string.")
+        elif _is_blank_or_placeholder(artifact["summary"]):
+            issues.append(f"{prefix} must set `summary` to a non-empty string.")
     return issues
 
 
@@ -1627,6 +1646,36 @@ def _load_evidence_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HarnessError(f"`{path}` must contain a JSON object.")
     return payload
+
+
+def _review_artifact_has_signal(text: str | None) -> bool:
+    if not text:
+        return False
+    return bool(
+        _extract_all_labeled_entries(text, "generator가 주장하는 완료 내용", "claimed outcome")
+        or _extract_all_labeled_entries(text, "실행한 명령", "commands run")
+        or _extract_all_labeled_entries(text, "확인한 로그 또는 산출물", "checked outputs")
+        or _extract_all_labeled_entries(text, "읽은 파일", "read files")
+        or _extract_all_labeled_entries(text, "아직 남아 있는 위험", "residual risks")
+    )
+
+
+def _qa_artifact_has_signal(text: str | None) -> bool:
+    if not text:
+        return False
+    has_target = bool(
+        _extract_all_labeled_entries(text, "절차", "procedure")
+        or _extract_all_labeled_entries(text, "URL, route, endpoint, job", "runtime target")
+    )
+    has_result = bool(
+        _extract_all_labeled_entries(text, "실제 결과", "actual result")
+        or _extract_all_labeled_entries(text, "증거", "evidence")
+    )
+    return has_target and has_result
+
+
+def _is_blank_or_placeholder(value: str) -> bool:
+    return not value.strip() or _is_template_placeholder(value)
 
 
 def _progress_exact_next_step(text: str) -> str | None:

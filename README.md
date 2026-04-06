@@ -102,13 +102,13 @@ awh task new bootstrap-api --profile backend --repo "$REPO" --plan
 awh task new checkout-hardening --profile backend --repo "$REPO" --plan --long-running
 ```
 
-Then fill the generated repo and task files before relying on `awh verify`.
+Then fill the generated repo and task files before relying on `awh verify` or `awh export`.
 `verify` now checks for missing content, not only missing files.
-If `feature_list.json` or `evidence/manifest.json` exist, `verify --task` also validates their JSON structure.
+If `feature_list.json` or `evidence/manifest.json` exist, `verify --task` also validates their JSON structure, placeholder values, and required non-empty fields.
 Use `awh verify --strict` when you want evidence-backed evaluation readiness instead of basic scaffolding readiness.
 Strict mode requires a stronger `docs/verification-plan.md` plus meaningful `review.md`, `qa.md`, and `evidence/manifest.json` task records.
 `awh doctor` now recommends `roles.md` and `topology.md` conservatively.
-It only suggests multi-agent docs when plan, evaluator, ownership, and long-running signals are strong enough, and it biases toward centralized coordination with a separate evaluator gate.
+It only suggests multi-agent docs when plan, filled evaluator signals, ownership, and long-running signals are strong enough, and it biases toward centralized coordination with a separate evaluator gate.
 
 To add missing task artifacts later without overwriting existing files:
 
@@ -134,6 +134,7 @@ awh export generic-json --repo "$REPO" --task bootstrap-api
 
 Task-level exports are briefing-first.
 They surface compact task state and point back to canonical task files instead of mirroring full markdown documents into each adapter output.
+Exports now require the same basic readiness as `awh verify`; placeholder scaffolds are not exportable.
 `generic-json` task exports now include:
 
 - `files` for raw canonical contents

@@ -105,7 +105,7 @@ Expected behavior:
 - validates required repo files
 - validates that repo-level files are filled enough to be usable
 - validates that task directories are both complete and meaningfully filled
-- validates optional long-running JSON files when they are present
+- validates optional long-running JSON files when they are present, including placeholder and empty required fields
 - supports `--strict` to require stronger regression, rollback, review, QA, and evidence records
 - prints gaps without editing files
 
@@ -119,7 +119,7 @@ Expected behavior:
 - recommends the next concrete command or document to edit
 - suggests missing verification or evaluator artifacts
 - suggests long-running scaffolds for planned tasks that need session state
-- recommends multi-agent docs only when plan/evaluator/ownership signals are strong
+- recommends multi-agent docs only when plan, filled evaluator signals, ownership, and long-running state are strong
 - prefers `planner -> generator -> evaluator` or `coordinator + specialists` before fan-out patterns
 
 ### `awh upgrade`
@@ -159,6 +159,7 @@ awh task augment add-billing --qa --plan --long-running
 - treat missing repo root as an actionable error
 - default `task augment` to only-missing behavior
 - treat blank scaffolds as incomplete in `verify`
+- treat blank scaffolds as incomplete in `export`
 - keep markdown canonical while allowing structured long-running companion files
 - recommend the next command after every successful write
 

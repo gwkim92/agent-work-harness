@@ -755,6 +755,33 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("manifest.json", result.stdout)
             self.assertIn("invalid `kind`", result.stdout)
 
+    def test_verify_rejects_placeholder_long_running_scaffold(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "placeholder-long-running",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "general",
+                    "--long-running",
+                ).returncode,
+                0,
+            )
+            self.fill_task_harness(repo, "placeholder-long-running")
+
+            result = self.run_cli("verify", "--repo", str(repo), "--task", "placeholder-long-running")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("feature_list.json", result.stdout)
+            self.assertIn("task_slug", result.stdout)
+            self.assertIn("manifest.json", result.stdout)
+            self.assertIn("location", result.stdout)
+
     def test_verify_strict_requires_repo_evaluation_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
@@ -866,10 +893,16 @@ class AwhCliTests(unittest.TestCase):
             self.fill_task_harness(repo, "coord-task")
             self.fill_long_running_harness(repo, "coord-task")
 
-            doctor = self.run_cli("doctor", "--repo", str(repo))
-            self.assertEqual(doctor.returncode, 0)
-            self.assertIn("awh task augment coord-task --roles --topology", doctor.stdout)
-            self.assertIn("coordinator + specialists", doctor.stdout)
+            doctor_before = self.run_cli("doctor", "--repo", str(repo))
+            self.assertEqual(doctor_before.returncode, 0)
+            self.assertNotIn("awh task augment coord-task --roles --topology", doctor_before.stdout)
+
+            self.fill_strict_task_evidence(repo, "coord-task")
+
+            doctor_after = self.run_cli("doctor", "--repo", str(repo))
+            self.assertEqual(doctor_after.returncode, 0)
+            self.assertIn("awh task augment coord-task --roles --topology", doctor_after.stdout)
+            self.assertIn("coordinator + specialists", doctor_after.stdout)
 
     def test_doctor_points_to_long_running_repairs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1011,6 +1044,35 @@ class AwhCliTests(unittest.TestCase):
             self.assertEqual(generic_payload["briefing"]["next_step"], "rerun verification and continue implementation")
             self.assertIn("multi_agent_policy", generic_payload["briefing"])
 
+    def test_export_requires_readiness_not_just_file_presence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir)
+            self.assertEqual(self.run_cli("init", "--repo", str(repo)).returncode, 0)
+
+            repo_export = self.run_cli("export", "codex", "--repo", str(repo))
+            self.assertEqual(repo_export.returncode, 1)
+            self.assertIn("Repository is not ready for export", repo_export.stdout)
+            self.assertFalse((repo / "docs" / "exports" / "codex" / "repo.md").exists())
+
+            self.fill_repo_harness(repo)
+            self.assertEqual(
+                self.run_cli(
+                    "task",
+                    "new",
+                    "half-baked",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "general",
+                ).returncode,
+                0,
+            )
+
+            task_export = self.run_cli("export", "generic-json", "--repo", str(repo), "--task", "half-baked")
+            self.assertEqual(task_export.returncode, 1)
+            self.assertIn("Task `half-baked` is not ready for export", task_export.stdout)
+            self.assertFalse((repo / "docs" / "exports" / "generic" / "half-baked.json").exists())
+
     def test_long_running_exports_include_structured_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
@@ -1032,6 +1094,7 @@ class AwhCliTests(unittest.TestCase):
             )
             self.fill_task_harness(repo, "long-export")
             self.fill_long_running_harness(repo, "long-export")
+            self.fill_strict_task_evidence(repo, "long-export")
 
             codex_task = self.run_cli("export", "codex", "--repo", str(repo), "--task", "long-export")
             self.assertEqual(codex_task.returncode, 0, codex_task.stdout + codex_task.stderr)
@@ -1081,7 +1144,7 @@ class AwhCliTests(unittest.TestCase):
             self.assertIn("structured", generic_payload)
             self.assertIn("briefing", generic_payload)
             self.assertEqual(generic_payload["structured"]["feature_list"]["task_slug"], "long-export")
-            self.assertEqual(generic_payload["structured"]["evidence_manifest"]["artifacts"][0]["id"], "evidence-001")
+            self.assertEqual(generic_payload["structured"]["evidence_manifest"]["artifacts"][0]["id"], "evidence-101")
             self.assertEqual(generic_payload["briefing"]["current_focus"], "finish export summaries")
             self.assertEqual(
                 generic_payload["briefing"]["progress_next_step"],

@@ -33,6 +33,7 @@ For task-level exports, the generated output should:
 
 - inline only high-signal briefing data
 - point back to canonical markdown and JSON files for full detail
+- require the canonical repo/task files to pass basic readiness first
 - stay safe to regenerate without becoming a second source of truth
 
 ## Why Adapters Matter
@@ -206,6 +207,7 @@ awh export generic-json --repo /path/to/repo --task bootstrap-api
 ## Safety Rules
 
 - canonical files are always edited first
+- exports should fail fast when canonical files are still placeholder scaffolds
 - exports should be reproducible
 - generated files should be safe to regenerate
 - adapter-specific files should not hold the only copy of important meaning
