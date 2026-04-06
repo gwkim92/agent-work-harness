@@ -44,4 +44,10 @@ docs/tasks/<task-slug>/
 
 장기 작업에는 `feature_list.json`, `progress.md`, `init.sh`, `evidence/manifest.json`을 함께 두는 편이 좋다.
 
-이미 존재하는 task에 plan, review, qa, long-running 문서를 나중에 추가하려면 `--only-missing` 또는 `awh task augment <slug> --long-running`을 사용한다.
+이미 존재하는 task에 plan, review, qa, long-running 문서를 나중에 추가하려면 `awh task augment <slug>`를 사용한다.
+
+`awh task augment`는 기본적으로 missing 파일만 추가한다.
+
+`awh verify`와 `awh export`는 파일 존재만이 아니라 핵심 내용이 실제로 채워졌는지도 본다.
+
+특히 `feature_list.json`과 `evidence/manifest.json`이 있으면 placeholder 값이나 빈 필수값도 실패로 본다.

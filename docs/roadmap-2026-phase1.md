@@ -1,6 +1,6 @@
 # 2026 Product Refresh Roadmap
 
-Updated: 2026-04-05
+Updated: 2026-04-06
 
 ## Why
 
@@ -91,6 +91,11 @@ Status on 2026-04-05:
 - strict mode now checks repo-level regression guard, rollback, and human confirmation
 - strict mode now checks task-level review, QA, and collected evidence artifacts
 
+Follow-up on 2026-04-06:
+
+- export now requires the same basic repo/task readiness as `verify`
+- placeholder long-running JSON values now fail validation instead of silently passing
+
 ### Phase 5: Multi-Agent Policy
 
 - keep multi-agent docs available
@@ -100,7 +105,7 @@ Status on 2026-04-05:
 Status on 2026-04-05:
 
 - implemented as a conservative doctor/export policy layer
-- multi-agent docs are recommended only when plan, evaluator, ownership, and long-running signals are strong enough
+- multi-agent docs are recommended only when plan, filled evaluator signals, ownership, and long-running signals are strong enough
 - policy output now prefers centralized coordination and a separate evaluator gate
 
 ## Source Notes

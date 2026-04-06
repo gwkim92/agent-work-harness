@@ -65,7 +65,7 @@
 
 권장 순서:
 
-- 먼저 evaluator 분리를 확보한다
+- 먼저 evaluator 분리를 확보하고 실제 review/QA 내용을 채운다
 - 다음으로 `planner -> generator -> evaluator` 또는 `coordinator + specialists`를 검토한다
 - `parallel specialists -> integrator`는 ownership 분리가 문서로 분명하고 integrator가 명시될 때만 선택한다
 
