@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "task_slug": "[TASK_SLUG]",
+  "features": [
+    {
+      "id": "feature-001",
+      "description": "Describe one end-to-end feature or milestone to track.",
+      "status": "todo",
+      "priority": "medium",
+      "notes": "",
+      "evidence_refs": []
+    }
+  ]
+}
